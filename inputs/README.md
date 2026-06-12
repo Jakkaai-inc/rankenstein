@@ -10,3 +10,5 @@ Everything in this directory was prepared **before** the Claude Fable 5 Build Da
 - `ez-fabric-catalog-snapshot.json` (added Friday if present) — export of already-public storefront product data; grounding source + rollback insurance
 
 **Everything outside `inputs/` is built during the event, in-session, by Claude Fable 5.** The session log and workflow scripts are part of the submission.
+
+Infrastructure note: AWS resources (empty App Runner/ECS services, an empty database, DNS) were provisioned before the event carrying throwaway hello-world smoke containers; all application code replacing them is event-built. An earlier private prototype interface (built days before the event for quick testing) was retired and removed before the event — none of its code is used here; the application is built from scratch against the brief, rubric, and layer contracts in this directory.
