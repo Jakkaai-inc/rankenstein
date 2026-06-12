@@ -17,29 +17,37 @@ LAYER <id> (<agent|code>, <required|toggle>)
 
 ```
 LAYER ground (code+fetch, required)
-  IN:   piece target (product id | article topic), catalog snapshot / live product, brand profile (CONFIRMED only)
-  OUT:  FactsTable { field, value, source }[] — the only permissible claim sources
-  PASS: brand profile confirmed; facts non-empty; gaps[] listed explicitly
+  IN:   piece target (product id | article topic), catalog snapshot / live product, brand profile (CONFIRMED only),
+        store context { currency, locale, primary domain } from shop settings
+  OUT:  FactsTable { field, value, source, trust }[] — the only permissible claim sources
+  PASS: brand profile confirmed (HARD STOP otherwise — no degraded mode in automated runs); facts non-empty; gaps[] listed explicitly
+  PROVENANCE TIERS (trust field):
+        T1 structured fields (variants, options, prices, type, tags, shop settings) — fully trusted
+        T2 spec-formatted key:value lines inside body_html (e.g. "Width: 60 inch") — usable, labeled "merchant-stated"
+        T3 prose claims inside body_html — UNVERIFIED unless corroborated by T1/T2; flag, don't reuse
+        Pasted AI-chat artifacts (e.g. stray chat CSS classes) demote the WHOLE body_html to T3 + provenance flag.
 
 LAYER research (agent fast-tier, required)
   IN:   seed terms (from confirmed brand profile + piece target), country
-  OUT:  KeywordCandidate[] { keyword, volume, kd, intent, parentTopic, source: provider|web-estimate } — RAW, no self-filtering
-  PASS: ≥1 candidate; every row tagged with data source
+  OUT:  KeywordCandidate[] { keyword, volume: number|null, kd: number|null, intent, parentTopic, source: provider|web-estimate } — RAW, no self-filtering
+  PASS: ≥1 candidate; every row tagged with data source; volume/kd MAY be null when source=web-estimate (never fabricate numbers)
 
 LAYER filter (code, required)
-  IN:   KeywordCandidate[]
+  IN:   KeywordCandidate[], catalog index (product titles/types/tags, collection titles)
   OUT:  kept[] + dropped[] with reasons (PLP/SKU patterns for articles; head/category + sibling-SKU terms for product rewrites; competitor brands; near-me)
   PASS: deterministic — rules in code, never delegated to a model
+  HEAD-TERM DEFINITION (operational): a keyword is head/category iff it token-matches ≥ max(8, 25% of catalog) products, OR equals a collection title or product type. Computed from the catalog index — never a model judgment.
 
 LAYER serp-ownership (agent fast-tier fan-out, required)
-  IN:   top N candidates
-  OUT:  per candidate: { topUrls[], avgDR, owners[], winnable: yes|no|stretch } given THIS site's authority
+  IN:   top N candidates, site authority estimate { dr: number|null, source: provider|web-estimate } (produced by ground from provider when connected, else a conservative web-estimate; null ⇒ treat as low-authority)
+  OUT:  per candidate: { topUrls[], avgDR, owners[], winnable: yes|no|stretch } given the provided site authority
   PASS: every shortlisted candidate has an ownership verdict
 
 LAYER select (code + agent strong-tier, required)
   IN:   kept candidates + ownership + history/registry state
   OUT:  { primary, secondaries[], exclusions[] (cannibalization routing), historyDecision: net-new|spoke|refresh }
   PASS: firewall consulted; refresh-instead-of-duplicate honored; product rules: product-defining + variant terms only
+  FIREWALL DEFINITION: reject/route a candidate if (a) the exact keyword already has a primary owner page in the project registry, (b) it shares a parent topic at the SAME intent with an owned keyword on another page, or (c) its top-10 SERP overlaps ≥30% with an owned keyword's SERP at the same intent. Different intent on a shared topic ⇒ allowed as a spoke with an internal link to the owner.
 ```
 
 ## Article pipeline
@@ -68,7 +76,8 @@ LAYER draft (agent strong-tier + web, required - articles)
 LAYER rewrite (agent strong-tier, required - products)
   IN:   FactsTable, selected keywords, brand md, reference structure (minky preview)
   OUT:  body HTML (lead, who-it's-for, spec table, FAQ), metaTitle, metaDesc, Product JSON-LD, variant keyword→variant map
-  PASS: every claim ∈ FactsTable; structure matches reference; no aggregateRating without real reviews
+  PASS: every claim ∈ FactsTable (T1/T2 only; T3 never asserted); structure matches reference; no aggregateRating without real reviews
+  NOTES: who-it's-for framing derived from VERIFIED attributes (pattern, units sold, price ladder, dimensions) counts as grounded when phrased as suitability, not as user claims. Variant map covers only variants whose names have generic search demand; brand-coined colorway names are exempt (note them, don't force-map). JSON-LD priceCurrency comes from store context (ground layer), never assumed. Word target for product bodies: 250-500 words (configurable), computed not estimated.
 ```
 
 ## Quality layers (both pipelines)
@@ -98,6 +107,8 @@ LAYER verify (agent strong-tier, FRESH CONTEXT, required)
   IN:   final piece + RUBRIC.md Part A + FactsTable
   OUT:  { verdict: pass|fail, perGate: {...}, claimTrace: {claim→source}[] }
   PASS: builder cannot mark the piece done without this verdict = pass; 2 fails → piece self-flags for human triage
+  NOTE: in automated runs the verifier MUST be an independent context. Manual/dry runs may substitute a self-check but must label the verdict "self-check" (it never satisfies this layer's PASS).
+  EM-DASH SCOPE (for the gates + verify layers): zero em dashes in ALL emitted content — body HTML, meta fields, JSON-LD strings, and preview chrome.
 ```
 
 ## Optional layers (P1)

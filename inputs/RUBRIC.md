@@ -5,7 +5,7 @@
 ## Part A — per-piece gates (article or product rewrite)
 
 ### A1. Grounding (blocking)
-- [ ] Every factual claim (material, dimension, price, care, cert, stat) traces to a named field in the source data (catalog snapshot / live product / cited URL). The verifier must list each claim → source pair.
+- [ ] Every factual claim (material, dimension, price, care, cert, stat) traces to a named field in the source data (catalog snapshot / live product / cited URL). The verifier must list each claim → source pair, with the FactsTable trust tier (T1 structured / T2 merchant-stated spec lines / T3 unverified prose — T3 may never be asserted, only flagged).
 - [ ] Zero invented specs, certifications, awards, review counts, or numbers.
 - [ ] Data gaps are flagged (e.g. "GSM missing — ask merchant"), never filled by guess.
 - [ ] For articles: every external claim carries an inline link with descriptive anchor text; each cited URL loads (2xx) and actually supports the claim. Financial/legal/health claims cite only high-authority sources.
@@ -18,9 +18,9 @@
 - [ ] One-paragraph test: an LLM could summarize the page in one accurate paragraph.
 
 ### A3. Structured data & meta (blocking)
-- [ ] JSON-LD parses (`Article`+`FAQPage` for articles; `Product` for rewrites).
+- [ ] JSON-LD parses (`Article`+`FAQPage` for articles; `Product` for rewrites); `priceCurrency` from store settings, never assumed.
 - [ ] No `aggregateRating` or review fields unless real review data exists in source.
-- [ ] Meta title 50–60 chars with primary keyword near the front; meta description ≤ 155 chars; slug ≤ 5 words.
+- [ ] Meta title 50–60 chars (hard cap 62) with primary keyword near the front; meta description ≤ 155 chars; slug ≤ 5 words. (Known deviation: the pre-event reference preview's title is 62 chars — at the cap, not the target.)
 
 ### A4. Brand voice (blocking)
 - [ ] Zero em dashes. Zero emojis in headings. Zero banned words (per project's confirmed brand profile).
@@ -33,7 +33,7 @@
 - [ ] Articles: keyword not already covered by existing content at the same intent (else refresh recommendation, not a duplicate).
 
 ### A6. Process honesty (blocking)
-- [ ] The piece's content brief reports: keyword data source + confidence tag, SERP owner note, word target vs computed count, guardrail flags, verifier verdict.
+- [ ] The piece's content brief reports: keyword data source + confidence tag, SERP owner note, word target vs computed count (product target: 250-500 body words; article target: derived at outline), guardrail flags, verifier verdict (an independent-context verdict in automated runs; "self-check" labels never pass).
 - [ ] If the verifier failed the piece twice → status is self-flagged for human triage, NOT silently shipped or endlessly retried.
 
 ## Part B — run-level gates (the system itself)
