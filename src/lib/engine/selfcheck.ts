@@ -12,10 +12,11 @@
 import { writeFileSync } from 'node:fs';
 import { loadSnapshot, findRaw, normalizeProduct } from './snapshot';
 import { buildCatalogIndex } from './catalog';
-import { runProductRewrite, type EngineRunResult } from './pipeline';
-import { offlineMinkyDeps, DEFAULT_RUN_CONFIG } from './offline';
+import { runProductRewrite, runArticle, type EngineRunResult } from './pipeline';
+import { offlineMinkyDeps, DEFAULT_RUN_CONFIG, offlineArticleDeps, DEFAULT_ARTICLE_RUN_CONFIG } from './offline';
 import { renderPreview } from './preview';
 import { EZ_FABRIC_BRAND } from './brand';
+import { ARTICLE_TOPIC, ARTICLE_SOURCES } from './fixtures/minky-article';
 
 const SNAPSHOT = process.argv[2] ?? '/Users/gevbalyan/Claude/ez-fabric-public-snapshot.json';
 const SOLID_MINKY_ID = 9345778286829;
@@ -77,10 +78,29 @@ async function main() {
   writeFileSync('/tmp/rankenstein-preview-artifact.html', renderPreview(artifact, { originalBodyHtml: dove.bodyHtml, productGid: dove.id, storeDomain: 'ezfabricinc.com' }));
   console.log('  preview written   : /tmp/rankenstein-preview-artifact.html');
 
+  hr('4) ARTICLE RUN  -  "how to choose minky for baby blankets" (verifier should PASS)');
+  const article = await runArticle({
+    topic: ARTICLE_TOPIC, brand: EZ_FABRIC_BRAND, catalogIndex: index,
+    runConfig: DEFAULT_ARTICLE_RUN_CONFIG, deps: offlineArticleDeps(), sources: ARTICLE_SOURCES,
+  });
+  printRun(article);
+  writeFileSync('/tmp/rankenstein-preview-article.html', renderPreview(article, { originalBodyHtml: '', storeDomain: 'ezfabricinc.com' }));
+  console.log('  preview written   : /tmp/rankenstein-preview-article.html');
+
+  hr('5) ARTICLE NAIVE  -  uncited statistic (verifier should CATCH it)');
+  const articleNaive = await runArticle({
+    topic: ARTICLE_TOPIC, brand: EZ_FABRIC_BRAND, catalogIndex: index,
+    runConfig: DEFAULT_ARTICLE_RUN_CONFIG, deps: offlineArticleDeps({ naive: true }), sources: ARTICLE_SOURCES,
+  });
+  printRun(articleNaive);
+  console.log('\n  >>> The article verifier rejected the uncited "73%" statistic. Nothing ships.');
+
   hr('SUMMARY');
-  console.log(`  grounded : ${grounded.result.status}  (verifier ${grounded.result.verdict.verdict})`);
-  console.log(`  naive    : ${naive.result.status}  (verifier ${naive.result.verdict.verdict})  <- caught`);
-  console.log(`  artifact : ${artifact.result.status}  (${artifact.haltReason ? 'hard stop: ' + artifact.haltReason.slice(0, 50) : ''})`);
+  console.log(`  product grounded : ${grounded.result.status}  (verifier ${grounded.result.verdict.verdict})`);
+  console.log(`  product naive    : ${naive.result.status}  (verifier ${naive.result.verdict.verdict})  <- caught`);
+  console.log(`  product artifact : ${artifact.result.status}  (${artifact.haltReason ? 'hard stop: ' + artifact.haltReason.slice(0, 50) : ''})`);
+  console.log(`  article grounded : ${article.result.status}  (verifier ${article.result.verdict.verdict})`);
+  console.log(`  article naive    : ${articleNaive.result.status}  (verifier ${articleNaive.result.verdict.verdict})  <- caught`);
   console.log('');
 }
 
