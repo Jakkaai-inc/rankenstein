@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import {
   ArrowRight,
   Sparkles,
@@ -21,9 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { NeuralBackground } from "@/components/landing/NeuralBackground";
 import { PipelineFlow } from "@/components/landing/PipelineFlow";
 import { ClientShowcase } from "@/components/landing/ClientShowcase";
-import { getAccount } from "@/lib/session";
-
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Rankenstein — content that proves itself before it ships",
@@ -85,10 +81,9 @@ const AUDIENCE = [
   },
 ];
 
-export default async function LandingPage() {
-  const account = await getAccount();
-  if (account) redirect("/p");
-
+export default function LandingPage() {
+  // The homepage always renders the landing. The Get Started / Login button
+  // goes to /login, which is where the "already signed in? -> /p" check lives.
   return (
     <main className="relative flex min-h-screen flex-col overflow-x-hidden bg-background">
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
