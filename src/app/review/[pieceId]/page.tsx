@@ -6,6 +6,7 @@ import { getAccount } from "@/lib/session";
 import type { CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } from "@/types/contracts";
 import PiecePreview from "@/components/preview/PiecePreview";
 import ReviewToolbar from "@/components/preview/ReviewToolbar";
+import { detectVolatileFlags } from "@/components/preview/volatile";
 import { addComment, applyReview, approve, requestEmailReview, rollback } from "../actions";
 import { publishToStore, rollbackLive } from "../publish";
 
@@ -36,7 +37,12 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ pi
     .map((c) => ({ id: c.id, version: c.version, anchor: c.anchor as unknown as CommentAnchor, body: c.body, modality: c.modality === "voice" ? "voice" : "text" }));
   const openSpanCount = currentComments.length;
 
-  const flags = (piece.guardrailFlags as unknown as GuardrailFlag[] | null) ?? [];
+  const engineFlags = (piece.guardrailFlags as unknown as GuardrailFlag[] | null) ?? [];
+  // Review-time safety net: flag volatile fields (availability/stock, live price)
+  // baked into the static copy. The engine should not emit these (see [D->C] in
+  // LANE-REQUESTS); until it stops, this surfaces them so they are never shipped.
+  const volatileFlags = detectVolatileFlags(piece.html ?? "");
+  const flags: GuardrailFlag[] = [...engineFlags, ...volatileFlags];
   const verdict = piece.verifierVerdict as unknown as VerifierVerdict | null;
 
   return (
