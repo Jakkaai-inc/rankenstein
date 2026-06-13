@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { draftBrandFromSite } from "@/lib/brand";
 import { prisma } from "@/lib/db";
 import { getAccount, requireAccount, signIn, signOut } from "@/lib/session";
 
@@ -34,6 +35,30 @@ export async function createProject(formData: FormData) {
     data: { projectId: project.id, status: "QUEUED", log: [{ at: new Date().toISOString(), phase: "queued", message: "crawl + brand draft" }] },
   });
   redirect(`/projects/${project.id}`);
+}
+
+export async function draftBrand(formData: FormData) {
+  await requireAccount();
+  const projectId = String(formData.get("projectId"));
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+  const { ok, draft } = await draftBrandFromSite(project.siteUrl);
+  const data = ok
+    ? {
+        brandName: draft.brandName!,
+        industry: draft.industry ?? null,
+        audience: draft.audience ?? null,
+        voice: draft.voice ?? null,
+        brandFacts: draft.brandFacts ?? null,
+        seedTopics: draft.seedTopics ?? [],
+        competitors: draft.competitors ?? [],
+      }
+    : { brandName: project.name }; // refuse-and-flag: stub for manual entry, no invention
+  await prisma.brandProfile.upsert({
+    where: { projectId },
+    create: { projectId, ...data },
+    update: data,
+  });
+  revalidatePath(`/projects/${projectId}`);
 }
 
 export async function confirmBrandProfile(formData: FormData) {

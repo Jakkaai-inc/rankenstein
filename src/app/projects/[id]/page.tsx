@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { confirmBrandProfile } from "@/app/actions";
+import { confirmBrandProfile, draftBrand } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { requireAccount } from "@/lib/session";
 
@@ -55,6 +55,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       <Step n={2} title="Brand guidelines" done={brandConfirmed} current={connected && !brandConfirmed}>
         <p className="mb-3 text-sm text-gray-600">Drafted from the site crawl. Nothing generates until you confirm. Research starts from your seed topics.</p>
+        <form action={draftBrand} className="mb-3">
+          <input type="hidden" name="projectId" value={project.id} />
+          <button className="rounded border px-3 py-1.5 text-sm">{p ? "Re-draft from site" : "Draft from site crawl"}</button>
+        </form>
         <form action={confirmBrandProfile} className="space-y-2 text-sm">
           <input type="hidden" name="projectId" value={project.id} />
           <div className="grid grid-cols-2 gap-2">
