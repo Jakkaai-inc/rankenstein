@@ -7,6 +7,7 @@ import type { CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } fro
 import PiecePreview from "@/components/preview/PiecePreview";
 import ReviewToolbar from "@/components/preview/ReviewToolbar";
 import { addComment, applyReview, approve, requestEmailReview, rollback } from "../actions";
+import { publishToStore, rollbackLive } from "../publish";
 
 export const dynamic = "force-dynamic";
 
@@ -54,10 +55,13 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ pi
         status={piece.status}
         openComments={openSpanCount}
         versions={piece.versions}
+        publishedUrl={piece.publishedUrl}
         applyReview={applyReview}
         approve={approve}
         requestEmailReview={requestEmailReview}
         rollback={rollback}
+        publishToStore={publishToStore}
+        rollbackLive={rollbackLive}
       />
 
       {/* Grounding proof: the verifier verdict + guardrail flags that gated this piece. */}

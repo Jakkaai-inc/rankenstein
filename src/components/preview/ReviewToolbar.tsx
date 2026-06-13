@@ -9,23 +9,43 @@ import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ApplyReviewOutcome } from "@/app/review/actions";
+import type { PublishOutcome, LiveRollbackOutcome } from "@/app/review/publish";
 
 interface Props {
   pieceId: string;
   status: string;
   openComments: number;
   versions: { version: number; note: string | null }[];
+  publishedUrl?: string | null;
   applyReview: (formData: FormData) => Promise<ApplyReviewOutcome>;
   approve: (formData: FormData) => Promise<void>;
   requestEmailReview: (formData: FormData) => Promise<void>;
   rollback: (formData: FormData) => Promise<void>;
+  publishToStore: (formData: FormData) => Promise<PublishOutcome>;
+  rollbackLive: (formData: FormData) => Promise<LiveRollbackOutcome>;
 }
 
-export default function ReviewToolbar({ pieceId, status, openComments, versions, applyReview, approve, requestEmailReview, rollback }: Props) {
+export default function ReviewToolbar({ pieceId, status, openComments, versions, publishedUrl, applyReview, approve, requestEmailReview, rollback, publishToStore, rollbackLive }: Props) {
   const router = useRouter();
   const [outcome, runApply, applying] = useActionState<ApplyReviewOutcome | null, FormData>(
     async (_prev, fd) => {
       const r = await applyReview(fd);
+      router.refresh();
+      return r;
+    },
+    null,
+  );
+  const [pubOut, runPublish, publishing] = useActionState<PublishOutcome | null, FormData>(
+    async (_prev, fd) => {
+      const r = await publishToStore(fd);
+      router.refresh();
+      return r;
+    },
+    null,
+  );
+  const [rbOut, runRollbackLive, rollingBack] = useActionState<LiveRollbackOutcome | null, FormData>(
+    async (_prev, fd) => {
+      const r = await rollbackLive(fd);
       router.refresh();
       return r;
     },
@@ -59,11 +79,57 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
 
         <form action={approve}>
           <input type="hidden" name="pieceId" value={pieceId} />
-          <button className="rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={status === "APPROVED"}>
-            {status === "APPROVED" ? "Approved" : "Approve"}
+          <button className="rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={status === "APPROVED" || status === "PUBLISHED"}>
+            {status === "APPROVED" || status === "PUBLISHED" ? "Approved" : "Approve"}
           </button>
         </form>
+
+        {/* Live publish — only available once a human has APPROVED the piece. */}
+        {status === "APPROVED" && (
+          <form action={runPublish}>
+            <input type="hidden" name="pieceId" value={pieceId} />
+            <button className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={publishing} title="Snapshot the live store, then push this approved rewrite to the storefront">
+              {publishing ? "Publishing…" : "Publish to store"}
+            </button>
+          </form>
+        )}
+
+        {/* Live rollback — re-push the pre-publish snapshot to the storefront. */}
+        {status === "PUBLISHED" && (
+          <form action={runRollbackLive}>
+            <input type="hidden" name="pieceId" value={pieceId} />
+            <button className="rounded-md border border-amber-500 px-4 py-2 text-sm font-semibold text-amber-700 disabled:opacity-50" disabled={rollingBack} title="Restore the snapshot taken before publish to the live store">
+              {rollingBack ? "Rolling back…" : "Roll back live"}
+            </button>
+          </form>
+        )}
       </div>
+
+      {status === "PUBLISHED" && publishedUrl && (
+        <div className="mt-3 rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-900">
+          <b>Published live.</b>{" "}
+          <a href={publishedUrl} target="_blank" rel="noreferrer" className="underline">{publishedUrl}</a>
+        </div>
+      )}
+
+      {pubOut && (
+        <div className={`mt-3 rounded-lg border p-3 text-sm ${pubOut.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>
+          {pubOut.ok ? (
+            <>
+              <b>Published to the live store.</b> Pre-publish snapshot saved as v{pubOut.snapshotVersion} (one-click rollback ready).{" "}
+              {pubOut.publishedUrl && <a href={pubOut.publishedUrl} target="_blank" rel="noreferrer" className="underline">View live</a>}
+            </>
+          ) : (
+            <><b>Publish failed.</b> {pubOut.error}</>
+          )}
+        </div>
+      )}
+
+      {rbOut && (
+        <div className={`mt-3 rounded-lg border p-3 text-sm ${rbOut.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>
+          {rbOut.ok ? <><b>Rolled back live.</b> Restored snapshot v{rbOut.restoredVersion} to the store.</> : <><b>Rollback failed.</b> {rbOut.error}</>}
+        </div>
+      )}
 
       {outcome && (
         <div className={`mt-3 rounded-lg border p-3 text-sm ${outcome.ok ? "border-green-300 bg-green-50 text-green-900" : "border-red-300 bg-red-50 text-red-900"}`}>

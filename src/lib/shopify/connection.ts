@@ -13,24 +13,36 @@ interface ShopContext {
   blogId: string | null;
 }
 
-/** Fetch currency, primary locale, primary domain, and a target blog gid. */
+/**
+ * Fetch currency, primary locale, primary domain, and a target blog gid.
+ * Best-effort per field: a store/app missing an optional scope (e.g. read_locales)
+ * must not abort the connect — we keep whatever is accessible and null the rest.
+ */
 export async function fetchShopContext(client: AdminClient): Promise<ShopContext> {
-  const data = await client.graphql<{
-    shop: { currencyCode: string | null; primaryDomain: { host: string | null } | null };
-    shopLocales: { locale: string; primary: boolean }[];
-    blogs: { nodes: { id: string }[] };
-  }>(`{
-    shop { currencyCode primaryDomain { host } }
-    shopLocales { locale primary }
-    blogs(first: 1) { nodes { id } }
-  }`);
-  const primaryLocale = data.shopLocales?.find((l) => l.primary)?.locale ?? data.shopLocales?.[0]?.locale ?? null;
-  return {
-    currency: data.shop?.currencyCode ?? null,
-    locale: primaryLocale,
-    primaryDomain: data.shop?.primaryDomain?.host ?? null,
-    blogId: data.blogs?.nodes?.[0]?.id ?? null,
-  };
+  let currency: string | null = null;
+  let locale: string | null = null;
+  let primaryDomain: string | null = null;
+  let blogId: string | null = null;
+
+  try {
+    const d = await client.graphql<{ shop: { currencyCode: string | null; primaryDomain: { host: string | null } | null } }>(
+      `{ shop { currencyCode primaryDomain { host } } }`,
+    );
+    currency = d.shop?.currencyCode ?? null;
+    primaryDomain = d.shop?.primaryDomain?.host ?? null;
+  } catch { /* shop read denied — leave nulls */ }
+
+  try {
+    const d = await client.graphql<{ shopLocales: { locale: string; primary: boolean }[] }>(`{ shopLocales { locale primary } }`);
+    locale = d.shopLocales?.find((l) => l.primary)?.locale ?? d.shopLocales?.[0]?.locale ?? null;
+  } catch { /* read_locales not granted — locale stays null */ }
+
+  try {
+    const d = await client.graphql<{ blogs: { nodes: { id: string }[] } }>(`{ blogs(first: 1) { nodes { id } } }`);
+    blogId = d.blogs?.nodes?.[0]?.id ?? null;
+  } catch { /* read_content not granted — articles unavailable, products unaffected */ }
+
+  return { currency, locale, primaryDomain, blogId };
 }
 
 /** Upsert the connection for a project after a successful OAuth token exchange. */
