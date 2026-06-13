@@ -19,6 +19,14 @@ export interface PendingReviewPiece {
   metaTitle: string | null;
   metaDescription: string | null;
   kind: string;
+  // Project slug for a direct review link (/r/[slug]/[kind]/[id]). Optional:
+  // without it we fall back to /review/[id], which redirects to the new path.
+  slug?: string | null;
+}
+
+// Map a DB content kind to the review-route URL segment (matches src/app/r/*).
+function kindSegment(kind: string): string {
+  return kind === "ARTICLE" ? "article" : "product";
 }
 
 export interface BuiltEmail {
@@ -38,7 +46,11 @@ export function replyAddress(pieceId: string): string {
 
 export function buildPendingReviewEmail(piece: PendingReviewPiece, to: string): BuiltEmail {
   const title = piece.title ?? "Untitled piece";
-  const link = `${PUBLIC_URL}/review/${piece.id}`;
+  // Direct link to the new review route when we know the slug; else the old
+  // /review/[id] path (still served as a redirect to /r/...).
+  const link = piece.slug
+    ? `${PUBLIC_URL}/r/${piece.slug}/${kindSegment(piece.kind)}/${piece.id}`
+    : `${PUBLIC_URL}/review/${piece.id}`;
   const subject = `[rk:${piece.id}] Pending review: ${title}`;
   const kind = piece.kind === "PRODUCT_REWRITE" ? "product rewrite" : "article";
 

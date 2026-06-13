@@ -104,7 +104,22 @@ describe("buildPendingReviewEmail", () => {
     );
     expect(email.subject).toContain("[rk:pid9]");
     expect(email.replyTo).toContain("review+pid9@");
-    expect(email.html).toContain("/review/pid9");
+    expect(email.html).toContain("/review/pid9"); // fallback path when no slug
     expect(email.text).toContain("I approve");
+  });
+
+  it("links the new /r/[slug]/[kind]/[id] route when a slug is provided", () => {
+    const product = buildPendingReviewEmail(
+      { id: "pid9", title: "Spotted Dove", primaryKeyword: "k", metaTitle: "T", metaDescription: "D", kind: "PRODUCT_REWRITE", slug: "ezfabric" },
+      "gb@wizelab.ai",
+    );
+    expect(product.html).toContain("/r/ezfabric/product/pid9");
+    expect(product.text).toContain("/r/ezfabric/product/pid9");
+
+    const article = buildPendingReviewEmail(
+      { id: "a1", title: "Guide", primaryKeyword: "k", metaTitle: "T", metaDescription: "D", kind: "ARTICLE", slug: "ezfabric" },
+      "gb@wizelab.ai",
+    );
+    expect(article.html).toContain("/r/ezfabric/article/a1");
   });
 });

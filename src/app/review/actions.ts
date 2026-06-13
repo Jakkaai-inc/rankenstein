@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { makeClient, MODELS } from "@/lib/engine";
+import { deriveSlug } from "@/lib/slug";
 import type { CommentAnchor, FeedbackSet, ReviewComment } from "@/types/contracts";
 import { surgicalEditPiece, type SpanEditFn } from "./surgical";
 import { sendPendingReviewEmail } from "@/lib/email";
@@ -20,9 +21,25 @@ async function ownedPiece(pieceId: string) {
   if (!account) throw new Error("UNAUTHENTICATED");
   const piece = await prisma.contentItem.findFirst({
     where: { id: pieceId, project: { accountId: account.id } },
+    include: { project: { include: { shopify: { select: { shopDomain: true } } } } },
   });
   if (!piece) throw new Error("NOT_FOUND");
   return { account, piece };
+}
+
+// Map a DB content kind to the URL segment the review routes use
+// (see src/app/r/[slug]/page.tsx: "ARTICLE" -> "article", else "product").
+function kindSegment(kind: string): string {
+  return kind === "ARTICLE" ? "article" : "product";
+}
+
+// Revalidate the new review routes for a piece: the per-piece page and the
+// queue. The pages moved to /r/[slug]/[kind]/[id] and /r/[slug]; the old
+// /review/* paths are redirects now, so revalidating them does nothing useful.
+function revalidatePiece(piece: { id: string; kind: string; project: Parameters<typeof deriveSlug>[0] }) {
+  const slug = deriveSlug(piece.project);
+  revalidatePath(`/r/${slug}/${kindSegment(piece.kind)}/${piece.id}`);
+  revalidatePath(`/r/${slug}`);
 }
 
 async function latestVersion(pieceId: string): Promise<number> {
@@ -32,7 +49,7 @@ async function latestVersion(pieceId: string): Promise<number> {
 
 // Called directly from the client preview with a structured payload.
 export async function addComment(input: NewCommentInput): Promise<void> {
-  await ownedPiece(input.pieceId);
+  const { piece } = await ownedPiece(input.pieceId);
   await prisma.comment.create({
     data: {
       contentItemId: input.pieceId,
@@ -42,15 +59,15 @@ export async function addComment(input: NewCommentInput): Promise<void> {
       modality: input.modality,
     },
   });
-  revalidatePath(`/review/${input.pieceId}`);
+  revalidatePiece(piece);
 }
 
 export async function deleteComment(formData: FormData): Promise<void> {
   const pieceId = String(formData.get("pieceId"));
   const commentId = String(formData.get("commentId"));
-  await ownedPiece(pieceId);
+  const { piece } = await ownedPiece(pieceId);
   await prisma.comment.deleteMany({ where: { id: commentId, contentItemId: pieceId } });
-  revalidatePath(`/review/${pieceId}`);
+  revalidatePiece(piece);
 }
 
 // The surgical span editor: rewrite ONLY the highlighted span per the reviewer's
@@ -168,33 +185,31 @@ export async function applyReview(formData: FormData): Promise<ApplyReviewOutcom
     prisma.comment.updateMany({ where: { id: { in: appliedIds } }, data: { resolved: true } }),
   ]);
 
-  revalidatePath(`/review/${pieceId}`);
-  revalidatePath("/review");
+  revalidatePiece(piece);
   return { ok: true, surgical: true, untouchedSectionsChanged: [], applied: appliedIds.length, newVersion, edits: editsView };
 }
 
 export async function approve(formData: FormData): Promise<void> {
   const pieceId = String(formData.get("pieceId"));
-  await ownedPiece(pieceId);
+  const { piece } = await ownedPiece(pieceId);
   await prisma.contentItem.update({ where: { id: pieceId }, data: { status: "APPROVED" } });
-  revalidatePath(`/review/${pieceId}`);
-  revalidatePath("/review");
+  revalidatePiece(piece);
 }
 
 export async function requestEmailReview(formData: FormData): Promise<void> {
   const pieceId = String(formData.get("pieceId"));
   const { account, piece } = await ownedPiece(pieceId);
   await sendPendingReviewEmail(
-    { id: piece.id, title: piece.title, primaryKeyword: piece.primaryKeyword, metaTitle: piece.metaTitle, metaDescription: piece.metaDescription, kind: piece.kind },
+    { id: piece.id, title: piece.title, primaryKeyword: piece.primaryKeyword, metaTitle: piece.metaTitle, metaDescription: piece.metaDescription, kind: piece.kind, slug: deriveSlug(piece.project) },
     account.email,
   );
-  revalidatePath(`/review/${pieceId}`);
+  revalidatePiece(piece);
 }
 
 export async function rollback(formData: FormData): Promise<void> {
   const pieceId = String(formData.get("pieceId"));
   const toVersion = Number(formData.get("version"));
-  await ownedPiece(pieceId);
+  const { piece } = await ownedPiece(pieceId);
   const snap = await prisma.contentVersion.findUnique({ where: { contentItemId_version: { contentItemId: pieceId, version: toVersion } } });
   if (!snap) throw new Error("VERSION_NOT_FOUND");
   const newVersion = (await latestVersion(pieceId)) + 1;
@@ -204,5 +219,5 @@ export async function rollback(formData: FormData): Promise<void> {
     }),
     prisma.contentItem.update({ where: { id: pieceId }, data: { html: snap.html, status: "PENDING_REVIEW" } }),
   ]);
-  revalidatePath(`/review/${pieceId}`);
+  revalidatePiece(piece);
 }
