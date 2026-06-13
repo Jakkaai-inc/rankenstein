@@ -115,7 +115,7 @@ export function renderPreview(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rankenstein Preview - ${escapeHtml(p.title)}</title><style>${STYLE}</style></head>
 <body><div class="wrap">
-<h1>Product Rewrite Preview</h1>
+<div style="font-size:26px;font-weight:700;margin:0 0 4px">Product Rewrite Preview</div>
 <p class="sub">${escapeHtml(p.title)} &middot; ${escapeHtml(p.vendor)}</p>
 <div class="meta">
 <span class="chip">Store: ${escapeHtml(opts.storeDomain ?? run.ground.store.primaryDomain ?? '')}</span>
