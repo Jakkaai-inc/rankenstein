@@ -17,7 +17,10 @@ export const EZ_FABRIC_BRAND: BrandProfile = {
     // Lowercase descriptive use ("cuddle-soft") is tolerated but flagged; using
     // it as a product type ("Cuddle fabric") is a BAD trademark-as-generic flag.
     { mark: 'Cuddle', owner: 'Shannon Fabrics', descriptiveUseTolerated: true },
-    { mark: 'Minky', owner: 'genericized (originally Minkee)', descriptiveUseTolerated: true },
+    // NOTE: "Minky" is intentionally NOT listed. The Minkee mark has genericized;
+    // "minky fabric" is the standard category term and the product's own type, so
+    // flagging it would block the required primary keyword. Targeting/using it is
+    // correct, not a trademark violation.
   ],
   // Vague AEO-killers + hard-sell words the brand voice forbids. Kept lowercase;
   // gate matching is case-insensitive and word-boundaried.
