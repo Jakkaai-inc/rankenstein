@@ -5,10 +5,13 @@
 
 import {
   runProductRewrite,
+  runArticle,
   liveDeps,
+  liveArticleDeps,
   normalizeProduct,
   buildCatalogIndex,
   DEFAULT_RUN_CONFIG,
+  DEFAULT_ARTICLE_RUN_CONFIG,
 } from "@/lib/engine";
 import type { BrandProfile, RunConfig as EngineRunConfig } from "@/lib/engine/types";
 import { prisma } from "@/lib/db";
@@ -159,6 +162,114 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
   return { done, flagged, stopped: false };
 }
 
+// ── article batch ────────────────────────────────────────────────────────────
+
+export interface ArticleBatchOptions {
+  projectId: string;
+  runId: string;
+  limit?: number;
+  topics?: string[]; // explicit topics; else discovered from the confirmed brand's seed topics
+  rawProducts?: unknown[]; // injectable; else pulled from public products.json (catalog grounding + cannibalization firewall)
+  runConfig?: Partial<EngineRunConfig>;
+}
+
+/**
+ * Generate a batch of grounded ARTICLES into the review queue. Mirrors
+ * runCatalogRewrite but drives Lane C's runArticle. Topic discovery: by default
+ * the confirmed brand's seed topics ARE the per-article topics; the engine's
+ * research -> serp-ownership -> select layers find the winnable keyword within
+ * each. Dedup is by primaryKeyword (articles have no sourceRef until published),
+ * so repeat clicks advance to fresh topics. Each result -> ContentItem
+ * (kind=ARTICLE, PENDING_REVIEW or flagged) + ContentVersion v1.
+ */
+export async function runArticleBatch(opts: ArticleBatchOptions): Promise<{ done: number; flagged: number; stopped: boolean }> {
+  const project = await prisma.project.findUniqueOrThrow({
+    where: { id: opts.projectId },
+    include: { brandProfile: true },
+  });
+  if (!project.brandProfile?.confirmed) throw new Error("brand profile must be confirmed before a run");
+
+  const brand = toEngineBrand(project.brandProfile, project.siteUrl.replace(/^https?:\/\//, ""));
+  const rc = { ...DEFAULT_ARTICLE_RUN_CONFIG, ...opts.runConfig } as EngineRunConfig;
+  const deps = liveArticleDeps({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Catalog grounds the article (relatedProducts) and feeds the cannibalization
+  // firewall; public products.json needs no OAuth.
+  const raw = opts.rawProducts ?? (await fetchPublicProducts(project.siteUrl, 250));
+  const normalized = raw.map((r) => normalizeProduct(r as Parameters<typeof normalizeProduct>[0]));
+  const catalogIndex = buildCatalogIndex(normalized);
+
+  // Topic source: explicit list, else the confirmed brand's seed topics.
+  const allTopics = (opts.topics?.length ? opts.topics : brand.seedTerms)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 2);
+
+  // Dedup: skip topics whose keyword already produced an article for this project.
+  // We compare case-insensitively against existing article primaryKeyword/title.
+  const existing = await prisma.contentItem.findMany({
+    where: { projectId: opts.projectId, kind: "ARTICLE" },
+    select: { primaryKeyword: true, title: true },
+  });
+  const seen = new Set(
+    existing.flatMap((c) => [c.primaryKeyword, c.title].filter(Boolean).map((s) => s!.toLowerCase())),
+  );
+  const pending = allTopics.filter((t) => !seen.has(t.toLowerCase()));
+  const topics = pending.slice(0, opts.limit ?? 5);
+
+  await prisma.run.update({
+    where: { id: opts.runId },
+    data: { status: "RUNNING", total: topics.length, startedAt: new Date() },
+  });
+
+  let done = 0;
+  let flagged = 0;
+  let spend = 0;
+  const softStop = rc.runSpendSoftStopUsd ?? DEFAULT_RUN_CONFIG.runSpendSoftStopUsd;
+  // Articles run more layers (angle/outline+critic/draft/citations) than a
+  // product rewrite; budget a bit more per piece for the soft-stop.
+  const estPerArticle = EST_USD_PER_PIECE * 3;
+
+  for (const topic of topics) {
+    if (spend + estPerArticle > softStop) {
+      await appendRunLog(opts.runId, "soft-stop", `spend ~$${spend.toFixed(2)} reached the $${softStop} ceiling; stopping`);
+      await prisma.run.update({ where: { id: opts.runId }, data: { status: "PAUSED", spendUsd: spend } });
+      return { done, flagged, stopped: true };
+    }
+
+    try {
+      const res = await runArticle({
+        topic,
+        brand,
+        catalogIndex,
+        runConfig: rc,
+        deps,
+        relatedProducts: normalized,
+      });
+      spend += estPerArticle;
+      const isFlagged = res.haltReason != null || res.result.status === "flagged";
+      if (isFlagged) flagged++;
+      else done++;
+
+      await persistResult(opts.projectId, opts.runId, res, {
+        kind: "ARTICLE",
+        action: "CREATE",
+        sourceRef: null, // filled with the created article gid on first publish
+        priority: 0,
+      });
+      await prisma.run.update({ where: { id: opts.runId }, data: { done, flagged, spendUsd: spend } });
+    } catch (e) {
+      flagged++;
+      await appendRunLog(opts.runId, "error", `${topic}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  await prisma.run.update({
+    where: { id: opts.runId },
+    data: { status: "SUCCEEDED", done, flagged, spendUsd: spend, finishedAt: new Date() },
+  });
+  return { done, flagged, stopped: false };
+}
+
 function productRef(product: unknown): string {
   const p = product as { handle?: string; id?: number | string };
   return p.handle ?? String(p.id ?? "");
@@ -179,18 +290,34 @@ async function persistPiece(
   product: unknown,
   res: Awaited<ReturnType<typeof runProductRewrite>>,
 ) {
+  await persistResult(projectId, runId, res, {
+    kind: "PRODUCT_REWRITE",
+    action: "REFRESH",
+    sourceRef: productRef(product),
+    priority: scorePriority(product),
+  });
+}
+
+// Shared persistence for any engine result (product OR article). Article items
+// carry no sourceRef at draft time — Lane B's publish path fills it with the
+// created article gid on first push, so future publish/rollback target it.
+async function persistResult(
+  projectId: string,
+  runId: string,
+  res: Awaited<ReturnType<typeof runProductRewrite>>,
+  meta: { kind: "PRODUCT_REWRITE" | "ARTICLE"; action: "CREATE" | "REFRESH"; sourceRef: string | null; priority: number },
+) {
   const r = res.result;
-  const p = product as { id?: number | string; handle?: string };
   const status = res.haltReason != null || r.status === "flagged" ? "FAILED" : "PENDING_REVIEW";
   await prisma.contentItem.create({
     data: {
       projectId,
       runId,
-      kind: "PRODUCT_REWRITE",
-      action: "REFRESH",
+      kind: meta.kind,
+      action: meta.action,
       status: status as never,
-      sourceRef: productRef(product),
-      priority: scorePriority(product),
+      sourceRef: meta.sourceRef,
+      priority: meta.priority,
       title: r.title,
       slug: r.slug,
       metaTitle: r.metaTitle,
