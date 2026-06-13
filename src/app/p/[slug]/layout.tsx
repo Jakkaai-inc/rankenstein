@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { signOutAction } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
+import { findProjectBySlug } from "@/lib/slug";
 import Sidebar from "@/components/dashboard/Sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,29 +16,26 @@ export default async function ProjectLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
 }) {
   const account = await getAccount();
   if (!account) redirect("/login");
-  const { id } = await params;
+  const { slug } = await params;
 
-  const project = await prisma.project.findFirst({
-    where: { id, accountId: account.id },
-    include: { shopify: { select: { shopDomain: true } } },
-  });
+  const project = await findProjectBySlug(account.id, slug);
   if (!project) notFound();
 
   const [products, pending, published] = await Promise.all([
-    prisma.page.count({ where: { projectId: id, type: "PRODUCT" } }),
-    prisma.contentItem.count({ where: { projectId: id, status: "PENDING_REVIEW" } }),
-    prisma.contentItem.count({ where: { projectId: id, status: "PUBLISHED" } }),
+    prisma.page.count({ where: { projectId: project.id, type: "PRODUCT" } }),
+    prisma.contentItem.count({ where: { projectId: project.id, status: "PENDING_REVIEW" } }),
+    prisma.contentItem.count({ where: { projectId: project.id, status: "PUBLISHED" } }),
   ]);
 
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col">
       <header className="bg-background flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-3">
-          <Link href="/projects" className="text-base font-bold tracking-tight">Rankenstein</Link>
+          <Link href="/p" className="text-base font-bold tracking-tight">Rankenstein</Link>
           <span className="text-muted-foreground/40">/</span>
           <div>
             <div className="text-sm leading-tight font-semibold">{project.name}</div>
@@ -54,7 +52,7 @@ export default async function ProjectLayout({
       </header>
 
       <div className="flex flex-1">
-        <Sidebar projectId={id} counts={{ products, pending, published }} />
+        <Sidebar slug={slug} counts={{ products, pending, published }} />
         <main className="bg-muted/30 flex-1 overflow-x-hidden p-6">{children}</main>
       </div>
     </div>

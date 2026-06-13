@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { confirmBrandProfile, draftBrand } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
+import { findProjectBySlug } from "@/lib/slug";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +13,14 @@ import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const account = await getAccount();
   if (!account) redirect("/login");
-  const { id } = await params;
+  const { slug } = await params;
 
-  const project = await prisma.project.findFirst({ where: { id, accountId: account.id }, include: { brandProfile: true, shopify: true } });
+  const resolved = await findProjectBySlug(account.id, slug);
+  if (!resolved) notFound();
+  const project = await prisma.project.findUnique({ where: { id: resolved.id }, include: { brandProfile: true, shopify: true } });
   if (!project) notFound();
   const p = project.brandProfile;
   const s = project.shopify;
@@ -38,7 +41,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ id: s
             </div>
           ) : (
             <form action="/api/shopify/install" method="get" className="flex flex-wrap items-end gap-2">
-              <input type="hidden" name="projectId" value={id} />
+              <input type="hidden" name="projectId" value={project.id} />
               <div className="grid gap-1.5">
                 <Label htmlFor="shop">Store domain</Label>
                 <Input id="shop" name="shop" placeholder="your-store.myshopify.com" className="w-72" required />
@@ -59,12 +62,12 @@ export default async function SettingsPage({ params }: { params: Promise<{ id: s
         </CardHeader>
         <CardContent className="space-y-4">
           <form action={draftBrand}>
-            <input type="hidden" name="projectId" value={id} />
+            <input type="hidden" name="projectId" value={project.id} />
             <Button type="submit" variant="outline" size="sm">{p ? "Re-draft from site" : "Draft from site crawl"}</Button>
           </form>
 
           <form action={confirmBrandProfile} className="space-y-3">
-            <input type="hidden" name="projectId" value={id} />
+            <input type="hidden" name="projectId" value={project.id} />
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5"><Label>Brand name</Label><Input name="brandName" defaultValue={p?.brandName ?? project.name} required /></div>
               <div className="grid gap-1.5"><Label>Industry</Label><Input name="industry" defaultValue={p?.industry ?? ""} placeholder="e.g. minky fabric & sewing" /></div>
@@ -76,13 +79,6 @@ export default async function SettingsPage({ params }: { params: Promise<{ id: s
             <div className="grid gap-1.5"><Label>Competitors (comma-separated)</Label><Input name="competitors" defaultValue={(p?.competitors ?? []).join(", ")} /></div>
             <Button type="submit">{p?.confirmed ? "Update profile" : "Confirm & unlock generation"}</Button>
           </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Generation defaults</CardTitle></CardHeader>
-        <CardContent className="text-muted-foreground text-sm">
-          Each run grounds against your live catalog, runs the full engine (research → ground → rewrite → AEO → guardrails → verify), and only queues pieces an independent verifier passes. Ungrounded claims are flagged and held out of review.
         </CardContent>
       </Card>
     </div>

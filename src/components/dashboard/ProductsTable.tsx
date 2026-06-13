@@ -32,7 +32,7 @@ const FILTERS = [
   { key: "NONE", label: "No rewrite" },
 ] as const;
 
-export default function ProductsTable({ projectId, rows }: { projectId: string; rows: ProductRow[] }) {
+export default function ProductsTable({ slug, projectId, rows }: { slug: string; projectId: string; rows: ProductRow[] }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("ALL");
   const [openHandle, setOpenHandle] = useState<string | null>(null);
@@ -95,14 +95,14 @@ export default function ProductsTable({ projectId, rows }: { projectId: string; 
 
       <Sheet open={!!open} onOpenChange={(o) => !o && setOpenHandle(null)}>
         <SheetContent className="overflow-y-auto sm:max-w-3xl">
-          {open && <Drawer projectId={projectId} row={open} />}
+          {open && <Drawer slug={slug} projectId={projectId} row={open} />}
         </SheetContent>
       </Sheet>
     </div>
   );
 }
 
-function Drawer({ projectId, row }: { projectId: string; row: ProductRow }) {
+function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row: ProductRow }) {
   const [orig, setOrig] = useState<OriginalProduct | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -125,7 +125,7 @@ function Drawer({ projectId, row }: { projectId: string; row: ProductRow }) {
       <div className="space-y-5 p-4">
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild><a href={row.url} target="_blank" rel="noreferrer">View product <ExternalLink className="size-3.5" /></a></Button>
-          {row.contentItemId && <Button size="sm" asChild><Link href={`/review/${row.contentItemId}`}>Open rewrite in review →</Link></Button>}
+          {row.contentItemId && <Button size="sm" asChild><Link href={`/r/${slug}/product/${row.contentItemId}`}>Open rewrite in review →</Link></Button>}
         </div>
 
         {row.contentItemId && (

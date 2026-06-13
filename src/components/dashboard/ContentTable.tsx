@@ -30,7 +30,7 @@ export interface ContentRow {
 
 const FILTERS = ["ALL", "PENDING_REVIEW", "APPROVED", "PUBLISHED", "FAILED"] as const;
 
-export default function ContentTable({ rows }: { rows: ContentRow[] }) {
+export default function ContentTable({ slug, rows }: { slug: string; rows: ContentRow[] }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("ALL");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export default function ContentTable({ rows }: { rows: ContentRow[] }) {
               </SheetHeader>
               <div className="space-y-5 p-4">
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" asChild><Link href={`/review/${open.id}`}>Open in review →</Link></Button>
+                  <Button size="sm" asChild><Link href={`/r/${slug}/${open.kind === "ARTICLE" ? "article" : "product"}/${open.id}`}>Open in review →</Link></Button>
                   {open.publishedUrl && <Button size="sm" variant="outline" asChild><a href={open.publishedUrl} target="_blank" rel="noreferrer">View live <ExternalLink className="size-3.5" /></a></Button>}
                 </div>
 

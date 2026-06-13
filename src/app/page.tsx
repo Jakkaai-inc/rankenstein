@@ -87,7 +87,7 @@ const AUDIENCE = [
 
 export default async function LandingPage() {
   const account = await getAccount();
-  if (account) redirect("/projects");
+  if (account) redirect("/p");
 
   return (
     <main className="relative flex min-h-screen flex-col overflow-x-hidden bg-background">

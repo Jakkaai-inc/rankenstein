@@ -7,24 +7,24 @@ import { LayoutDashboard, Package, FileText, Settings, ArrowLeft } from "lucide-
 import { cn } from "@/lib/utils";
 
 interface Props {
-  projectId: string;
+  slug: string;
   counts: { products: number; pending: number; published: number };
 }
 
-export default function Sidebar({ projectId, counts }: Props) {
+export default function Sidebar({ slug, counts }: Props) {
   const pathname = usePathname();
-  const base = `/projects/${projectId}`;
+  const base = `/p/${slug}`;
   const items = [
-    { href: base, label: "Overview", Icon: LayoutDashboard, exact: true },
+    { href: `${base}/overview`, label: "Overview", Icon: LayoutDashboard },
     { href: `${base}/products`, label: "Products", Icon: Package, badge: counts.products || undefined },
-    { href: `${base}/content`, label: "Content", Icon: FileText, badge: counts.pending || undefined },
+    { href: `${base}/articles`, label: "Articles", Icon: FileText, badge: counts.pending || undefined },
     { href: `${base}/settings`, label: "Settings", Icon: Settings },
   ];
 
   return (
     <nav className="bg-sidebar text-sidebar-foreground flex w-56 shrink-0 flex-col gap-1 border-r p-3">
-      {items.map(({ href, label, Icon, exact, badge }) => {
-        const active = exact ? pathname === href : pathname.startsWith(href);
+      {items.map(({ href, label, Icon, badge }) => {
+        const active = pathname.startsWith(href);
         return (
           <Link
             key={href}
@@ -44,7 +44,7 @@ export default function Sidebar({ projectId, counts }: Props) {
           </Link>
         );
       })}
-      <Link href="/projects" className="text-muted-foreground hover:text-foreground mt-2 flex items-center gap-2 px-3 py-2 text-xs">
+      <Link href="/p" className="text-muted-foreground hover:text-foreground mt-2 flex items-center gap-2 px-3 py-2 text-xs">
         <ArrowLeft className="size-3" /> All projects
       </Link>
     </nav>

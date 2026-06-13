@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Login() {
   const account = await getAccount();
-  if (account) redirect("/projects");
+  if (account) redirect("/p");
 
   return (
     <main className="bg-muted/30 flex min-h-screen flex-col items-center justify-center gap-6 p-8">
