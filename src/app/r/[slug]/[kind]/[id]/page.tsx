@@ -50,7 +50,7 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ sl
     <main className="bg-muted/30 min-h-screen">
      <div className="mx-auto max-w-5xl space-y-4 p-6">
       <header>
-        <Link href={`/r/${slug}`} className="text-muted-foreground text-sm hover:underline">← review queue</Link>
+        <Link href={`/p/${slug}/review`} className="text-muted-foreground text-sm hover:underline">← review queue</Link>
         <h1 className="text-2xl font-bold">{piece.title ?? "Untitled"}</h1>
         <p className="text-muted-foreground text-sm">
           {piece.project.name} · {piece.kind === "PRODUCT_REWRITE" ? "product rewrite" : "article"}

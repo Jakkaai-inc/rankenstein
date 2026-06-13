@@ -62,7 +62,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
               <input type="hidden" name="limit" value="2" />
               <Button type="submit"><Rocket className="size-4" />Generate a batch</Button>
             </form>
-            <Button variant="outline" asChild><Link href={`/r/${slug}`}>Review queue ({pending})</Link></Button>
+            <Button variant="outline" asChild><Link href={`${base}/review`}>Review queue ({pending})</Link></Button>
           </div>
         )}
       </div>

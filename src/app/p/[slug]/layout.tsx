@@ -1,11 +1,11 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { signOutAction } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
-import { findProjectBySlug } from "@/lib/slug";
+import { deriveSlug } from "@/lib/slug";
 import Sidebar from "@/components/dashboard/Sidebar";
+import ProjectSwitcher, { type SwitcherProject } from "@/components/dashboard/ProjectSwitcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -22,8 +22,15 @@ export default async function ProjectLayout({
   if (!account) redirect("/login");
   const { slug } = await params;
 
-  const project = await findProjectBySlug(account.id, slug);
+  // all of the account's projects (for the switcher) — find the current by slug
+  const all = await prisma.project.findMany({
+    where: { accountId: account.id },
+    include: { shopify: { select: { shopDomain: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const project = all.find((p) => deriveSlug(p) === slug);
   if (!project) notFound();
+  const switcherProjects: SwitcherProject[] = all.map((p) => ({ slug: deriveSlug(p), name: p.name, siteUrl: p.siteUrl, connected: !!p.shopify }));
 
   const [products, pending, published] = await Promise.all([
     prisma.page.count({ where: { projectId: project.id, type: "PRODUCT" } }),
@@ -35,12 +42,9 @@ export default async function ProjectLayout({
     <div className="bg-background text-foreground flex min-h-screen flex-col">
       <header className="bg-background flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-3">
-          <Link href="/p" className="text-base font-bold tracking-tight">Rankenstein</Link>
+          <span className="text-base font-bold tracking-tight">Rankenstein</span>
           <span className="text-muted-foreground/40">/</span>
-          <div>
-            <div className="text-sm leading-tight font-semibold">{project.name}</div>
-            <div className="text-muted-foreground text-xs leading-tight">{project.siteUrl}</div>
-          </div>
+          <ProjectSwitcher projects={switcherProjects} currentSlug={slug} />
           <Badge variant={project.shopify ? "success" : "secondary"} className="ml-1">
             {project.shopify ? "● Shopify connected" : "○ not connected"}
           </Badge>

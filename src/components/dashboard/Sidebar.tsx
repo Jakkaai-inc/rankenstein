@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, FileText, Settings, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Package, FileText, Settings, ArrowLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -16,8 +16,9 @@ export default function Sidebar({ slug, counts }: Props) {
   const base = `/p/${slug}`;
   const items = [
     { href: `${base}/overview`, label: "Overview", Icon: LayoutDashboard },
+    { href: `${base}/review`, label: "Review", Icon: ClipboardCheck, badge: counts.pending || undefined },
     { href: `${base}/products`, label: "Products", Icon: Package, badge: counts.products || undefined },
-    { href: `${base}/articles`, label: "Articles", Icon: FileText, badge: counts.pending || undefined },
+    { href: `${base}/articles`, label: "Articles", Icon: FileText },
     { href: `${base}/settings`, label: "Settings", Icon: Settings },
   ];
 
