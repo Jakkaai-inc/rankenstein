@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { confirmBrandProfile, draftBrand } from "@/app/actions";
 import { prisma } from "@/lib/db";
-import { requireAccount } from "@/lib/session";
+import { getAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,8 @@ function Step({ n, title, done, current, children }: { n: number; title: string;
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
-  const account = await requireAccount();
+  const account = await getAccount();
+  if (!account) redirect("/");
   const { id } = await params;
   const project = await prisma.project.findFirst({
     where: { id, accountId: account.id },

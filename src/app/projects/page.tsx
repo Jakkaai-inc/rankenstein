@@ -1,13 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { createProject, signOutAction } from "@/app/actions";
 import { prisma } from "@/lib/db";
-import { requireAccount } from "@/lib/session";
+import { getAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  const account = await requireAccount();
+  const account = await getAccount();
+  if (!account) redirect("/");
   const projects = await prisma.project.findMany({
     where: { accountId: account.id },
     include: { brandProfile: true, shopify: true, _count: { select: { pieces: true } } },
