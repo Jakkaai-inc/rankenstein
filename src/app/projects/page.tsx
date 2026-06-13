@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
   const account = await getAccount();
-  if (!account) redirect("/");
+  if (!account) redirect("/login");
   const projects = await prisma.project.findMany({
     where: { accountId: account.id },
     include: { brandProfile: true, shopify: true, _count: { select: { pieces: true } } },

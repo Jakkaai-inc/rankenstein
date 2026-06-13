@@ -23,7 +23,7 @@ export async function signInAction(formData: FormData) {
 
 export async function signOutAction() {
   await signOut();
-  redirect("/");
+  redirect("/login");
 }
 
 export async function createProject(formData: FormData) {

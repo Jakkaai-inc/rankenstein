@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ReviewQueue({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   const account = await getAccount();
-  if (!account) redirect("/");
+  if (!account) redirect("/login");
   const { project } = await searchParams;
 
   const pieces = await prisma.contentItem.findMany({

@@ -24,7 +24,7 @@ function Stat({ icon, label, value, tone = "default" }: { icon: React.ReactNode;
 
 export default async function OverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const account = await getAccount();
-  if (!account) redirect("/");
+  if (!account) redirect("/login");
   const { id } = await params;
 
   const project = await prisma.project.findFirst({

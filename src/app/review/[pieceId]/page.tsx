@@ -18,7 +18,7 @@ function flagClass(sev: string): string {
 
 export default async function ReviewPiecePage({ params }: { params: Promise<{ pieceId: string }> }) {
   const account = await getAccount();
-  if (!account) redirect("/");
+  if (!account) redirect("/login");
   const { pieceId } = await params;
 
   const piece = await prisma.contentItem.findFirst({
