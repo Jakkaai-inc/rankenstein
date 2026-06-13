@@ -1,0 +1,317 @@
+// Rankenstein data model — Build Day 2026-06-13.
+// Lane A owns this file. Other lanes: request fields via LANE-REQUESTS.md.
+// Multi-tenant ready (Account -> Project) but the demo drives one project.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Tenancy + auth-lite ────────────────────────────────────────────────────
+model Account {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  kind      String    @default("site_owner") // site_owner | agency
+  credits   Int       @default(100000) // cosmetic token balance for the demo
+  createdAt DateTime  @default(now())
+  sessions  Session[]
+  projects  Project[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ── Project = one site/store ───────────────────────────────────────────────
+model Project {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
+
+  name    String
+  siteUrl String
+
+  brandProfile BrandProfile?
+  shopify      ShopifyConnection?
+
+  pages        Page[]
+  keywords     Keyword[]
+  runConfigs   RunConfig[]
+  runs         Run[]
+  pieces       ContentItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Crawled then human-confirmed brand guidelines (ask-first rule).
+model BrandProfile {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id])
+
+  brandName  String
+  industry   String?
+  audience   String?
+  voice      String?
+  brandFacts String? // markdown grounding source
+  seedTopics String[] @default([]) // research starts HERE
+
+  // { bannedWords: string[], noEmDashes: bool, noEmojiHeadings: bool, trademarks: string[] }
+  voiceHardRules Json    @default("{\"bannedWords\":[],\"noEmDashes\":true,\"noEmojiHeadings\":true,\"trademarks\":[]}")
+  competitors    String[] @default([])
+
+  confirmed   Boolean   @default(false) // generation is BLOCKED until true
+  confirmedAt DateTime?
+  brandMd     String?
+  updatedAt   DateTime  @updatedAt
+}
+
+// Lane B owns the logic; schema lives here. Offline token after OAuth.
+model ShopifyConnection {
+  id          String  @id @default(cuid())
+  projectId   String  @unique
+  project     Project @relation(fields: [projectId], references: [id])
+
+  shopDomain   String  // ezfabricinc.myshopify.com
+  accessToken  String? // offline token from OAuth (encrypt before multi-user launch)
+  scopes       String?
+  currency     String? // store context for JSON-LD priceCurrency
+  locale       String?
+  primaryDomain String?
+  blogId       String? // target blog gid for articles
+
+  installedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ── Catalog/site pages + the keyword registry (firewall state) ─────────────
+enum PageType {
+  PRODUCT
+  VARIANT
+  COLLECTION
+  BLOG
+  HOME
+  PAGE
+}
+
+model Page {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  type       PageType
+  url        String
+  title      String?
+  externalId String? // shopify gid
+  handle     String?
+
+  keywords     Keyword[]
+  contentItems ContentItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, url])
+}
+
+enum KeywordRole {
+  PRIMARY
+  SECONDARY
+}
+
+enum KeywordStatus {
+  CANDIDATE
+  MAPPED
+  REJECTED
+}
+
+model Keyword {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  keyword     String
+  volume      Int?
+  difficulty  Int?
+  intent      String? // informational | commercial | transactional | local | navigational
+  breadth     String? // head | mid | long_tail | variant
+  parentTopic String?
+  serpTopUrls Json?
+  dataSource  String  @default("web-estimate") // provider-verified | web-estimate
+
+  ownerPageId     String?
+  ownerPage       Page?         @relation(fields: [ownerPageId], references: [id])
+  role            KeywordRole?
+  status          KeywordStatus @default(CANDIDATE)
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, keyword])
+  @@index([projectId, parentTopic])
+}
+
+// ── Run configuration (the layer toggles + knobs) ──────────────────────────
+model RunConfig {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  name        String  @default("Default")
+  contentType String  @default("product") // product | article
+  goal        String  @default("improve_product") // new_articles | update_articles | improve_product
+
+  depth         String @default("standard") // brief | standard | deep
+  readability   String @default("standard")
+  groundedness  String @default("strict")  // strict | balanced
+  // { tables, quotes, kpiChips, charts, images } booleans
+  quality       Json   @default("{\"tables\":true,\"quotes\":false,\"kpiChips\":true,\"charts\":false,\"images\":false}")
+  // which optional layers are on: { angle, aeo, citationVerify, imageGen }
+  layers        Json   @default("{\"angle\":true,\"aeo\":true,\"citationVerify\":true,\"imageGen\":false}")
+
+  scheduleCron String? // null = on-demand
+  perPieceTokenCeiling Int @default(120000)
+  runSpendSoftStopUsd  Float @default(400)
+
+  createdAt DateTime @default(now())
+  runs      Run[]
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  PAUSED
+  SUCCEEDED
+  FAILED
+}
+
+model Run {
+  id          String     @id @default(cuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id])
+  runConfigId String?
+  runConfig   RunConfig? @relation(fields: [runConfigId], references: [id])
+
+  status   RunStatus @default(QUEUED)
+  total    Int       @default(0)
+  done     Int       @default(0)
+  flagged  Int       @default(0)
+  spendUsd Float     @default(0)
+  log      Json      @default("[]")
+  error    String?
+
+  pieces ContentItem[]
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([status, createdAt])
+}
+
+// ── The unit of work: a piece (article or product rewrite) ─────────────────
+enum ContentKind {
+  ARTICLE
+  PRODUCT_REWRITE
+}
+
+enum ContentAction {
+  CREATE
+  REFRESH
+  MERGE
+  REMOVE
+  LINK_PATCH
+}
+
+enum ContentStatus {
+  DRAFTING
+  PENDING_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  PUBLISHED
+  REJECTED
+  FAILED
+}
+
+model ContentItem {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+  runId     String?
+  run       Run?    @relation(fields: [runId], references: [id])
+
+  kind   ContentKind
+  action ContentAction @default(CREATE)
+  status ContentStatus @default(DRAFTING)
+  priority Int          @default(0) // higher first
+
+  title           String?
+  slug            String?
+  metaTitle       String?
+  metaDescription String?
+  primaryKeyword  String?
+
+  html           String?
+  jsonld         Json?
+  brief          Json? // ContentBrief (see contracts.ts)
+  guardrailFlags Json? // GuardrailFlag[]
+  verifierVerdict Json? // VerifierVerdict
+
+  targetPageId String?
+  targetPage   Page?   @relation(fields: [targetPageId], references: [id])
+
+  publishedUrl String?
+  publishedAt  DateTime?
+
+  versions ContentVersion[]
+  comments Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, status])
+  @@index([runId, priority])
+}
+
+// Snapshot BEFORE every push -> rollback.
+model ContentVersion {
+  id            String      @id @default(cuid())
+  contentItemId String
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
+  version       Int
+  html          String
+  meta          Json?
+  note          String?
+  isLivePush    Boolean     @default(false) // true when this snapshot captured the pre-push live state
+  createdAt     DateTime    @default(now())
+
+  @@unique([contentItemId, version])
+}
+
+// Anchored review comments (text or voice) -> surgical edits.
+model Comment {
+  id            String      @id @default(cuid())
+  contentItemId String
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
+  version       Int         // the piece version this comment targets
+
+  // anchor: { mode: "global"|"span", selector?, textQuote?, startOffset?, endOffset? }
+  anchor   Json
+  body     String
+  modality String  @default("text") // text | voice
+  resolved Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}

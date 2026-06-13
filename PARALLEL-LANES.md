@@ -60,7 +60,12 @@ Comment (anchor/body/modality), ContentVersion, RunConfig (layer toggles + depth
 readability/groundedness + image-gen), VerifierVerdict. Names/shapes here are law.
 
 ## Status board (each lane updates its line)
-- Lane A: Phase 0 in progress — scaffolding, schema, contracts.
-- Lane B: awaiting CONTRACTS FROZEN.
-- Lane C: can start now against snapshot; wire to contracts when frozen.
-- Lane D: awaiting CONTRACTS FROZEN + sample piece.
+- Lane A: **CONTRACTS FROZEN 2026-06-13** — `prisma/schema.prisma` + `src/types/contracts.ts` pushed to main. Lanes B/C/D may build against them now. A continuing: scaffold + deploy skeleton + app shell.
+- Lane B: UNLOCKED — build `src/lib/shopify/*` + `src/app/api/shopify/*` against ShopifyConnection (schema) + Project/Page/ContentItem types.
+- Lane C: UNLOCKED — build `src/lib/engine/*` against contracts.ts (FactsTable, KeywordCandidate, PieceResult, RunConfig, VerifierVerdict). Test vs the snapshot.
+- Lane D: UNLOCKED — build `src/app/review/*` + `src/components/preview/*` + `src/lib/email/*` against ContentItem/Comment/ContentVersion (schema) + ReviewComment/FeedbackSet/SurgicalEditResult (contracts).
+
+## CONTRACTS FROZEN — the law for all lanes
+- DB model: `prisma/schema.prisma` (Account, Session, Project, BrandProfile, ShopifyConnection, Page, Keyword, RunConfig, Run, ContentItem, ContentVersion, Comment).
+- TS types: `src/types/contracts.ts` (FactsTable, KeywordCandidate, KeywordSelection, RunConfig, PieceTarget, PieceResult, GuardrailFlag, Violation, ContentBrief, VerifierVerdict, ReviewComment, FeedbackSet, SurgicalEditResult).
+- Need a new field/type/dependency? Append to `LANE-REQUESTS.md` and ping Gev — only Lane A edits schema, contracts, package.json.
