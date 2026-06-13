@@ -76,6 +76,10 @@ export function selectKeywords(
   serpVerdicts: SerpOwnership[],
   target: NormalizedProduct,
   registry: Registry = { entries: [] },
+  // product: prefer a transactional primary + map variant color terms.
+  // article: prefer an informational/commercial primary, no variant map,
+  // informational terms stay rankable (an article can target them as primary).
+  mode: 'product' | 'article' = 'product',
 ): Selection {
   const serpMap = new Map(serpVerdicts.map((s) => [s.keyword, s]));
   const thisTokens = productTokens(target);
@@ -101,15 +105,17 @@ export function selectKeywords(
   const rankable: KeywordCandidate[] = [];
 
   for (const c of filtered.kept) {
-    const shade = mapToVariant(c.keyword, optionValues);
-    if (shade && /colou?r|black|white|gray|grey|silver|brown|ivory|charcoal|taupe|tan/i.test(c.keyword)) {
-      variantMap.push({ keyword: c.keyword, volume: c.volume, kd: c.kd, variantValue: shade });
-      mappedShades.add(shade);
-      continue;
-    }
-    if (c.intent === 'informational') {
-      faqs.push({ candidate: c, role: 'faq', serp: serpMap.get(c.keyword) });
-      continue;
+    if (mode === 'product') {
+      const shade = mapToVariant(c.keyword, optionValues);
+      if (shade && /colou?r|black|white|gray|grey|silver|brown|ivory|charcoal|taupe|tan/i.test(c.keyword)) {
+        variantMap.push({ keyword: c.keyword, volume: c.volume, kd: c.kd, variantValue: shade });
+        mappedShades.add(shade);
+        continue;
+      }
+      if (c.intent === 'informational') {
+        faqs.push({ candidate: c, role: 'faq', serp: serpMap.get(c.keyword) });
+        continue;
+      }
     }
     rankable.push(c);
   }
@@ -145,9 +151,13 @@ export function selectKeywords(
   const ranked = [...survivors].sort(
     (a, b) => score(b, serpMap.get(b.keyword), thisTokens) - score(a, serpMap.get(a.keyword), thisTokens),
   );
-  // prefer a transactional primary; fall back to the top-scored survivor.
+  // product: prefer transactional; article: prefer informational then commercial.
   const primaryCand =
-    ranked.find((c) => c.intent === 'transactional') ?? ranked[0];
+    mode === 'article'
+      ? ranked.find((c) => c.intent === 'informational') ??
+        ranked.find((c) => c.intent === 'commercial') ??
+        ranked[0]
+      : ranked.find((c) => c.intent === 'transactional') ?? ranked[0];
   if (!primaryCand) {
     throw new Error('select: no rankable primary survived the firewall');
   }

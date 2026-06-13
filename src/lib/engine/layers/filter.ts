@@ -69,6 +69,10 @@ export function filterKeywords(
   index: CatalogIndex,
   target: NormalizedProduct,
   config: FilterConfig = EZ_FABRIC_FILTER_CONFIG,
+  // product mode drops head/category + sibling-SKU; article mode keeps them
+  // (articles legitimately target informational head terms) and only strips
+  // PLP/SKU patterns + competitor + near-me.
+  mode: 'product' | 'article' = 'product',
 ): FilterResult {
   const kept: KeywordCandidate[] = [];
   const dropped: FilterResult['dropped'] = [];
@@ -104,37 +108,39 @@ export function filterKeywords(
       continue;
     }
 
-    // 4. sibling-SKU: a token that marks a DIFFERENT product and is not ours.
-    const siblingTok = toks.find(
-      (t) =>
-        !thisTokens.has(t) &&
-        !vn.has(t) &&
-        (patterns.has(t) || (index.tokenFreq.get(t) ?? 0) >= config.siblingMinFreq),
-    );
-    if (siblingTok) {
-      drop(
-        c,
-        'sibling-sku',
-        `"${siblingTok}" describes a different product (print/pattern/line). Route to that listing to avoid self-cannibalization.`,
+    if (mode === 'product') {
+      // 4. sibling-SKU: a token that marks a DIFFERENT product and is not ours.
+      const siblingTok = toks.find(
+        (t) =>
+          !thisTokens.has(t) &&
+          !vn.has(t) &&
+          (patterns.has(t) || (index.tokenFreq.get(t) ?? 0) >= config.siblingMinFreq),
       );
-      continue;
-    }
+      if (siblingTok) {
+        drop(
+          c,
+          'sibling-sku',
+          `"${siblingTok}" describes a different product (print/pattern/line). Route to that listing to avoid self-cannibalization.`,
+        );
+        continue;
+      }
 
-    // 5. head/category
-    const phrase = reduced.join(' ');
-    const matchCount = countMatching(index, reduced);
-    const isHead =
-      index.productTypes.has(phrase) ||
-      index.productTypes.has(c.keyword.toLowerCase().trim()) ||
-      matchCount >= index.headThreshold;
-    if (isHead && isTransactionalish(c.intent)) {
-      drop(
-        c,
-        'head-or-category',
-        `Head/category term (matches ${matchCount} products; threshold ${index.headThreshold}). ` +
-          `Belongs to a collection page, not a single product. Routed to category/collection.`,
-      );
-      continue;
+      // 5. head/category (product pages only; collections own these terms)
+      const phrase = reduced.join(' ');
+      const matchCount = countMatching(index, reduced);
+      const isHead =
+        index.productTypes.has(phrase) ||
+        index.productTypes.has(c.keyword.toLowerCase().trim()) ||
+        matchCount >= index.headThreshold;
+      if (isHead && isTransactionalish(c.intent)) {
+        drop(
+          c,
+          'head-or-category',
+          `Head/category term (matches ${matchCount} products; threshold ${index.headThreshold}). ` +
+            `Belongs to a collection page, not a single product. Routed to category/collection.`,
+        );
+        continue;
+      }
     }
 
     kept.push(c);

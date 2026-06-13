@@ -46,6 +46,7 @@ import type {
   SerpOwnership,
   Intent,
   TrustTier,
+  ImageSlot,
 } from '../../types/contracts';
 
 /** Internal facts flow type (contract FactsTable is an object; layers pass rows). */
@@ -224,4 +225,77 @@ export type EngineVerdict = {
   mode: VerifierMode;
   perGate: Record<string, { pass: boolean; note: string }>;
   claimTrace: InternalClaimTrace[];
+};
+
+// ── Engine-private: article pipeline ────────────────────────────────────────
+
+export type ArticleTarget = {
+  topic: string;
+  /** optional related products to ground internal facts against. */
+  relatedProducts?: NormalizedProduct[];
+};
+
+export type AngleLens = 'contrarian' | 'data-led' | 'buyer-decision' | 'maker-pain';
+
+export type Angle = {
+  lens: AngleLens;
+  /** a specific, subject-line-worthy headline for this angle. */
+  headline: string;
+  why: string;
+};
+
+export type AngleSet = {
+  angles: Angle[];
+  chosen: Angle;
+  why: string;
+};
+
+export type OutlineSection = {
+  h2: string;
+  reason: string;
+  bullets: string[];
+};
+
+export type ArticleFaq = { q: string; a: string };
+
+export type Outline = {
+  title: string;
+  slug: string;
+  metaTitle: string;
+  metaDesc: string;
+  hook: string;
+  sections: OutlineSection[];
+  faqs: ArticleFaq[];
+};
+
+export type OutlineCritique = {
+  verdict: 'pass' | 'revise';
+  issues: string[];
+};
+
+export type CitationTopic = 'general' | 'health' | 'finance' | 'legal';
+
+/** An external citation attached to a factual claim in an article draft. */
+export type Citation = {
+  url: string;
+  anchor: string;
+  claim: string;
+  /** claims in these areas require a high-authority source. */
+  topic?: CitationTopic;
+};
+
+export type CitationVerdict = {
+  citation: Citation;
+  loads: boolean;
+  supportsClaim: boolean;
+  authorityOk: boolean;
+};
+
+export type ArticleDraft = {
+  html: string;
+  meta: PieceMeta;
+  jsonld: Record<string, unknown>;
+  citations: Citation[];
+  images: ImageSlot[];
+  drafterId: string;
 };

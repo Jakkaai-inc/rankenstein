@@ -17,7 +17,12 @@ function sentenceCount(text: string): number {
   return text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 3).length;
 }
 
-export function aeoCheck(draft: PieceDraft, facts: FactRows, primaryKeyword: string): AeoFinding[] {
+export function aeoCheck(
+  draft: PieceDraft,
+  facts: FactRows,
+  primaryKeyword: string,
+  kind: 'product' | 'article' = 'product',
+): AeoFinding[] {
   const findings: AeoFinding[] = [];
   const bodyText = stripTags(draft.html);
   const lead = firstParagraph(draft.html);
@@ -43,27 +48,33 @@ export function aeoCheck(draft: PieceDraft, facts: FactRows, primaryKeyword: str
     note: hasFaq ? 'FAQ section present.' : 'No FAQ with real buyer questions found.',
   });
 
-  // extractable spec table
-  const hasTable = /<table[\s>]/i.test(draft.html);
-  findings.push({
-    check: 'spec-table',
-    pass: hasTable,
-    blocking: true,
-    note: hasTable ? 'Extractable spec table present.' : 'Product rewrite needs an extractable spec table.',
-  });
+  // extractable spec table (product rewrites only)
+  if (kind === 'product') {
+    const hasTable = /<table[\s>]/i.test(draft.html);
+    findings.push({
+      check: 'spec-table',
+      pass: hasTable,
+      blocking: true,
+      note: hasTable ? 'Extractable spec table present.' : 'Product rewrite needs an extractable spec table.',
+    });
+  }
 
-  // differentiation: at least one concrete grounded number/spec the copy states.
+  // differentiation: at least one concrete number/spec the copy states. For
+  // products it must trace to an internal fact; for articles a cited number
+  // (inline link) counts, since article facts live in external sources.
   const factValues = facts.filter((f) => f.trust !== 'T3').map((f) => f.value);
   const numbersInBody = bodyText.match(/\d+(?:\.\d+)?/g) ?? [];
   const factBlob = factValues.join(' ');
   const groundedNumber = numbersInBody.some((n) => factBlob.includes(n));
+  const hasCitation = /<a [^>]*href=/i.test(draft.html);
+  const differentiated = kind === 'article' ? groundedNumber || (numbersInBody.length > 0 && hasCitation) : groundedNumber;
   findings.push({
     check: 'differentiation',
-    pass: groundedNumber,
+    pass: differentiated,
     blocking: true,
-    note: groundedNumber
-      ? 'Copy includes at least one concrete, grounded number/spec.'
-      : 'Copy lacks a concrete, grounded, brand-specific number/spec a competitor could not copy.',
+    note: differentiated
+      ? 'Copy includes at least one concrete number/spec (grounded or cited).'
+      : 'Copy lacks a concrete, brand-specific number/spec a competitor could not copy.',
   });
 
   // extractability: key facts live in body text (not only meta/alt).
