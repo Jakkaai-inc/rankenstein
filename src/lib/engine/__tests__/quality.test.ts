@@ -37,6 +37,7 @@ async function rewriteInput(): Promise<RewriteInput> {
     brandVoiceNote: EZ_FABRIC_BRAND.voiceNote,
     vendorName: EZ_FABRIC_BRAND.vendorName,
     wordTarget: WORD_TARGET,
+    gaps: ground.gaps.map((g) => `${g.field}: ${g.note}`),
   };
 }
 

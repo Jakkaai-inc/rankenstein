@@ -34,6 +34,8 @@ export type RewriteInput = {
   vendorName: string;
   /** product body word target window. */
   wordTarget: { min: number; max: number };
+  /** data gaps (as "field: note") the rewriter must NOT assert. */
+  gaps: string[];
 };
 
 export interface Rewriter {

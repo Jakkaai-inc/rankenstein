@@ -191,6 +191,7 @@ export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResu
     brandVoiceNote: brand.voiceNote,
     vendorName: brand.vendorName,
     wordTarget: window,
+    gaps: ground.gaps.map((g) => `${g.field}: ${g.note}`),
   };
   let draft = await deps.rewriter.rewrite(rewriteInput);
   log.push({ layer: 'rewrite', ok: true, note: `rewriter=${draft.rewriterId}, ${wordCount(draft.html)} words` });

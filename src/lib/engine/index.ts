@@ -49,6 +49,19 @@ export {
 export { renderPreview } from './preview';
 export { offlineMinkyDeps, DEFAULT_RUN_CONFIG } from './offline';
 
+// Live Anthropic-backed providers (implement the provider interfaces)
+export {
+  liveDeps,
+  AnthropicResearchProvider,
+  AnthropicSerpProvider,
+  AnthropicRewriter,
+  AnthropicVerifier,
+  makeClient,
+  structuredCall,
+  parseJsonLoose,
+  MODELS,
+} from './providers/live';
+
 // Brand fixture + regulated patterns
 export { EZ_FABRIC_BRAND, EZ_FABRIC_BRAND_UNCONFIRMED, REGULATED_CLAIM_PATTERNS } from './brand';
 
