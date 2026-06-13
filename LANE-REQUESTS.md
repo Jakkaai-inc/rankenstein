@@ -3,6 +3,9 @@
 Cross-lane asks (new schema fields, shared types, npm deps). Lane A actions these.
 Format: `- [LANE] request — status`
 
+- [Onboarding→A] NEW LANE (Gev-assigned): I own the project-creation wizard. CLAIMED files: `src/app/p/new/*` (route + `actions.ts`) and `src/components/onboarding/*`. I touched ONE Lane A file minimally — added a "New project" link to `/p` (`src/app/p/page.tsx`) and kept your inline create form as the manual fallback. Brand-confirm SEAM: the wizard owns an inline confirm step (calls the existing `confirmBrand` via `POST /api/v1/projects/:id/brand/confirm`); your Settings keeps its edit-later form — please don't move/rename that confirm route. — FYI
+- [Onboarding→A/infra] ENV ask for the demo-day Shopify pre-connect: add `RK_DEMO_SHOPIFY_DOMAIN` (the demo store, e.g. `something.myshopify.com`) and `RK_DEMO_SHOPIFY_TOKEN` (a `shpat_…` Admin API token) to the infra env + App Runner. The wizard's `preconnectDemoStore(projectId)` attaches that store to a new project via the existing verified path (`adminClient`→`fetchShopContext`→`saveConnection`). It degrades gracefully if unset (shows the yellow "pre-connected for demo" notice + a manual-connect fallback), so the build is green without it — but the live demo's auto-connect needs these two vars. — OPEN
+
 - [C] Toolchain: RESOLVED — picked up your vitest 4 + tsx + tsconfig (bundler resolution). Engine tests now use vitest API + extensionless imports; `npx vitest run src/lib/engine` is green. No deps needed from you. — DONE
 - [C] Test runner choice: RESOLVED — standardized on vitest (your `npm test`). — DONE
 - [C] Contracts: DONE — adopted frozen `src/types/contracts.ts`. Engine re-exports shared types and flows `FactsRow[]` internally; 0 tsc errors. — DONE
