@@ -172,7 +172,9 @@ class TemplateRewriter implements Rewriter {
     if (width) faqs.push([`How wide is it?`, `${escapeHtml(width)}, so a single width covers most throw-size projects.`]);
     if (care) faqs.push([`How do I wash it?`, `${escapeHtml(care)}.`]);
     faqs.push([`Is this solid or printed?`, `Solid. This listing is the solid range${colorCount ? ` (${colorCount} shades)` : ''}. Prints and dots are separate listings.`]);
-    if (soldAs) faqs.push([`How is it sold?`, `${escapeHtml(soldAs)}${priceLow && priceHigh ? `, from $${priceLow} to $${priceHigh}.` : '.'}`]);
+    // Units only; the price range lives in the spec table (avoid restating
+    // drift-prone prices throughout the prose).
+    if (soldAs) faqs.push([`How is it sold?`, `${escapeHtml(soldAs)}.`]);
     const faqSection = faqs.length
       ? `<h2>FAQ</h2>${faqs.map(([q, a]) => `<p><strong>${q}</strong> ${a}</p>`).join('')}`
       : '';

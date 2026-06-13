@@ -49,6 +49,16 @@ const IRON_RE = /\biron(ing)?\b/i;
 // A "true weight" signal (GSM or oz). "3mm" pile height does NOT count.
 const TRUE_WEIGHT_RE = /\b\d+(\.\d+)?\s*(gsm|g\/m2|g\/m²|oz|ounce)\b/i;
 
+/**
+ * VOLATILE facts: true only at snapshot time (live stock/availability counts).
+ * They stay in the FactsTable for record + JSON-LD `offers.availability` (which
+ * is designed to be re-evaluated live), but must NEVER be asserted in body prose
+ * or the spec table - they go stale the moment someone buys. Rewriters exclude
+ * these from the assertable fact set; a guardrail backstops any leak.
+ * (Per Lane D live-review finding 2026-06-13.)
+ */
+export const VOLATILE_FACT_FIELDS = new Set(['availability']);
+
 /** Map a merchant spec label to a canonical FactsTable field. null = ignore. */
 function canonicalField(label: string): string | null {
   const l = label.toLowerCase();

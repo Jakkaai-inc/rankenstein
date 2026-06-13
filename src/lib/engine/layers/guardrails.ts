@@ -20,6 +20,13 @@ import type {
 import { REGULATED_CLAIM_PATTERNS } from '../brand';
 import { stripTags } from '../html';
 
+// Volatile stock/availability asserted in body prose or the spec table. True only
+// at snapshot time; belongs in JSON-LD offers.availability, never static copy.
+// (Lane D live-review finding 2026-06-13.) Requires a number near a stock word so
+// "Is it in stock?" style questions do not false-positive.
+const STOCK_IN_PROSE =
+  /\b\d+\s*(?:of|\/)\s*\d+\s*(?:variants?\s*)?(?:in[\s-]?stock|available)\b|\b\d+\s+(?:variants?|units?|items?)\s+(?:in[\s-]?stock|available|left)\b|\b\d+\s+in[\s-]?stock\b/i;
+
 export type GuardrailInput = {
   draft: PieceDraft;
   facts: FactRows;
@@ -90,6 +97,18 @@ export function guardrails(input: GuardrailInput): GuardrailFlag[] {
         note: `${pat.note}${grounded ? ' (present in source — still flag for sign-off)' : ' Claim is NOT in source data — refuse and remove.'}`,
       });
     }
+  }
+
+  // ---- volatile data asserted in static copy (stock/availability count) -----
+  if (STOCK_IN_PROSE.test(bodyText)) {
+    flags.push({
+      type: 'other',
+      severity: 'WARN',
+      note:
+        'Volatile data: a stock/availability count appears in body prose or the spec table. ' +
+        'Stock is true only at snapshot time and goes stale once someone buys; it belongs only in ' +
+        'JSON-LD offers.availability (re-evaluated live), never in static copy.',
+    });
   }
 
   // ---- provenance: reuse of T3 (unverified) prose ---------------------------

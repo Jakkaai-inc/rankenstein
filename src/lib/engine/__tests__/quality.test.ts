@@ -10,6 +10,7 @@ import { runGates } from '../layers/gates';
 import { aeoCheck, aeoBlockingFailures } from '../layers/aeo';
 import { guardrails, hasBlockingFlag } from '../layers/guardrails';
 import { gradePiece } from '../layers/verify';
+import { stripTags } from '../html';
 import { EZ_FABRIC_BRAND } from '../brand';
 import { MINKY_RESEARCH, MINKY_SERP } from '../fixtures/minky-keywords';
 import type { RewriteInput } from '../providers';
@@ -40,6 +41,45 @@ async function rewriteInput(): Promise<RewriteInput> {
     gaps: ground.gaps.map((g) => `${g.field}: ${g.note}`),
   };
 }
+
+describe('volatile fields never enter static copy (Lane D finding)', () => {
+  const STOCK = /\b\d+\s*(?:of|\/)\s*\d+\s*(?:variants?\s*)?(?:in[\s-]?stock|available)\b|\bvariants? in[\s-]?stock\b|\b\d+\s+in[\s-]?stock\b/i;
+
+  it('template body + spec table contain no stock/availability count', async () => {
+    const draft = await templateRewriter.rewrite(await rewriteInput());
+    expect(STOCK.test(stripTags(draft.html))).toBe(false);
+    expect(draft.html.toLowerCase()).not.toContain('in stock');
+  });
+
+  it('but JSON-LD still carries offers.availability (the right place for it)', async () => {
+    const draft = await templateRewriter.rewrite(await rewriteInput());
+    const offers = draft.jsonld.offers as Record<string, unknown>;
+    expect(String(offers.availability)).toMatch(/schema\.org\/(In|OutOf)Stock/);
+  });
+
+  it('the FAQ no longer restates exact prices (drift-prone)', async () => {
+    const draft = await templateRewriter.rewrite(await rewriteInput());
+    const faq = draft.html.slice(draft.html.indexOf('<h2>FAQ'));
+    expect(/\$\d/.test(faq)).toBe(false);
+  });
+
+  it('guardrails WARN-flags a leaked stock count in body prose', async () => {
+    const input = await rewriteInput();
+    const leaky = {
+      ...(await templateRewriter.rewrite(input)),
+      html: '<h1>X</h1><h2>Specs</h2><table><tr><td>Availability</td><td>20 of 20 variants in stock</td></tr></table>',
+    };
+    const flags = guardrails({
+      draft: leaky,
+      facts: ground.facts,
+      brand: EZ_FABRIC_BRAND,
+      gaps: ground.gaps,
+      selection: input.selection,
+      carried: ground.provenanceFlags,
+    });
+    expect(flags.some((f) => /volatile/i.test(f.note))).toBe(true);
+  });
+});
 
 describe('grounded template rewriter passes Part A', () => {
   it('produces gate-clean output (zero violations)', async () => {
