@@ -62,7 +62,7 @@ readability/groundedness + image-gen), VerifierVerdict. Names/shapes here are la
 ## Status board (each lane updates its line)
 - Lane A: **CONTRACTS FROZEN 2026-06-13** — `prisma/schema.prisma` + `src/types/contracts.ts` pushed to main. Lanes B/C/D may build against them now. A continuing: scaffold + deploy skeleton + app shell.
 - Lane B: UNLOCKED — build `src/lib/shopify/*` + `src/app/api/shopify/*` against ShopifyConnection (schema) + Project/Page/ContentItem types.
-- Lane C: UNLOCKED — build `src/lib/engine/*` against contracts.ts (FactsTable, KeywordCandidate, PieceResult, RunConfig, VerifierVerdict). Test vs the snapshot.
+- Lane C: PRODUCT-REWRITE PATH DONE — full workflow `ground→research→filter→serp→select→rewrite→aeo→guardrails→gates→verify` in `src/lib/engine/*`, wired to frozen contracts.ts. 51 tests green vs the real 633-product snapshot; 0 tsc errors. Public API: `import { runProductRewrite, renderPreview, offlineMinkyDeps } from '@/lib/engine'`. Demo: `npx tsx src/lib/engine/selfcheck.ts` (grounded PASSES, naive rewriter CAUGHT by verifier on fabricated GSM/cert/reviews, artifact body demoted+self-flags). Passes RUBRIC Part A. Live agents plug into the Research/Serp/Rewriter/Verifier interfaces (need `@anthropic-ai/sdk` dep, see LANE-REQUESTS). NEXT: article path + live Anthropic-backed providers.
 - Lane D: UNLOCKED — build `src/app/review/*` + `src/components/preview/*` + `src/lib/email/*` against ContentItem/Comment/ContentVersion (schema) + ReviewComment/FeedbackSet/SurgicalEditResult (contracts).
 
 ## CONTRACTS FROZEN — the law for all lanes
