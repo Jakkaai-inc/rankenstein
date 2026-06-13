@@ -33,7 +33,10 @@ export default async function ProjectsListPage() {
       </header>
 
       <main className="mx-auto max-w-3xl space-y-6 p-6">
-        <h1 className="text-xl font-bold">Projects</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold">Projects</h1>
+          <Button asChild><Link href="/p/new">New project</Link></Button>
+        </div>
 
         <div className="space-y-3">
           {projects.map((p) => (
