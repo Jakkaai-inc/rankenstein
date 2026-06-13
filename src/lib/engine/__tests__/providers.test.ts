@@ -3,11 +3,15 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseJsonLoose, MODELS } from '../providers/anthropic';
-import { liveDeps } from '../providers/live';
+import { liveDeps, liveArticleDeps } from '../providers/live';
 import { AnthropicRewriter } from '../providers/anthropic-rewrite';
 import { AnthropicVerifier } from '../providers/anthropic-verify';
 import { AnthropicResearchProvider } from '../providers/anthropic-research';
 import { AnthropicSerpProvider } from '../providers/anthropic-serp';
+import { AnthropicAngleProvider } from '../providers/anthropic-angle';
+import { AnthropicOutlineProvider, AnthropicOutlineCritic } from '../providers/anthropic-outline';
+import { AnthropicArticleDrafter } from '../providers/anthropic-draft';
+import { FetchAgentCitationChecker } from '../providers/anthropic-citation';
 
 const KEY = { apiKey: 'sk-ant-test-not-used' };
 
@@ -55,6 +59,26 @@ describe('live providers construct without network and conform to interfaces', (
     expect(typeof deps.research.keywords).toBe('function');
     expect(typeof deps.serp.ownership).toBe('function');
     expect(typeof deps.rewriter.rewrite).toBe('function');
+    expect(deps.verifier.mode).toBe('independent');
+  });
+
+  it('live article providers construct and expose their methods', () => {
+    expect(typeof new AnthropicAngleProvider(KEY).angles).toBe('function');
+    expect(typeof new AnthropicOutlineProvider(KEY).outline).toBe('function');
+    expect(typeof new AnthropicOutlineCritic(KEY).critique).toBe('function');
+    const drafter = new AnthropicArticleDrafter(KEY);
+    expect(typeof drafter.id).toBe('string');
+    expect(typeof drafter.draft).toBe('function');
+    expect(typeof new FetchAgentCitationChecker(KEY).check).toBe('function');
+  });
+
+  it('liveArticleDeps() builds a full ArticleRunDeps with an independent verifier', () => {
+    const deps = liveArticleDeps(KEY);
+    expect(typeof deps.angle.angles).toBe('function');
+    expect(typeof deps.outline.outline).toBe('function');
+    expect(typeof deps.critic.critique).toBe('function');
+    expect(typeof deps.drafter.draft).toBe('function');
+    expect(typeof deps.citationChecker.check).toBe('function');
     expect(deps.verifier.mode).toBe('independent');
   });
 

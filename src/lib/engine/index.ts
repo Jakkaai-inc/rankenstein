@@ -6,8 +6,16 @@
 // Rewriter, Verifier) with agents/Ahrefs/Shopify and pass them as RunDeps.
 
 // Orchestrator
-export { runProductRewrite } from './pipeline';
-export type { EngineRunResult, RunOptions, RunDeps, StageLog } from './pipeline';
+export { runProductRewrite, runArticle, runPiece } from './pipeline';
+export type {
+  EngineRunResult,
+  RunOptions,
+  RunDeps,
+  ArticleRunOptions,
+  ArticleRunDeps,
+  PieceRunOptions,
+  StageLog,
+} from './pipeline';
 
 // Provider interfaces (live impls plug in here)
 export type {
@@ -16,6 +24,14 @@ export type {
   Rewriter,
   Verifier,
   RewriteInput,
+  AngleProvider,
+  OutlineProvider,
+  OutlineCritic,
+  ArticleDrafter,
+  ArticleDraftInput,
+  ArticleSource,
+  CitationChecker,
+  ArticleVerifier,
 } from './providers';
 
 // Layers (callable individually)
@@ -29,7 +45,14 @@ export { templateRewriter, naiveRewriter } from './layers/rewrite';
 export { aeoCheck, aeoBlockingFailures } from './layers/aeo';
 export { guardrails, hasBlockingFlag } from './layers/guardrails';
 export { runGates } from './layers/gates';
-export { gradePiece, SelfCheckVerifier, IndependentVerifier } from './layers/verify';
+export { gradePiece, gradeArticle, SelfCheckVerifier, IndependentVerifier, IndependentArticleVerifier } from './layers/verify';
+
+// Article layers
+export { groundArticle } from './layers/ground';
+export { FixtureAngleProvider, validateAngle, angleIsSubjectLine } from './layers/angle';
+export { FixtureOutlineProvider, DeterministicCritic, runOutlineLoop } from './layers/outline';
+export { templateArticleDrafter, naiveArticleDrafter } from './layers/draft';
+export { FixtureCitationChecker, verifyCitations, citationsBlocking, failedCitations, citationOk } from './layers/citation-verify';
 
 // Catalog + snapshot helpers
 export { buildCatalogIndex, tokenize, countMatching, productTokens } from './catalog';
@@ -47,15 +70,21 @@ export {
 
 // Preview + offline wiring
 export { renderPreview } from './preview';
-export { offlineMinkyDeps, DEFAULT_RUN_CONFIG } from './offline';
+export { offlineMinkyDeps, DEFAULT_RUN_CONFIG, offlineArticleDeps, DEFAULT_ARTICLE_RUN_CONFIG } from './offline';
 
 // Live Anthropic-backed providers (implement the provider interfaces)
 export {
   liveDeps,
+  liveArticleDeps,
   AnthropicResearchProvider,
   AnthropicSerpProvider,
   AnthropicRewriter,
   AnthropicVerifier,
+  AnthropicAngleProvider,
+  AnthropicOutlineProvider,
+  AnthropicOutlineCritic,
+  AnthropicArticleDrafter,
+  FetchAgentCitationChecker,
   makeClient,
   structuredCall,
   parseJsonLoose,
