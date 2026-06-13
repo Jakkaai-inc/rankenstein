@@ -260,3 +260,83 @@ export function defaultStore(brand: BrandProfile): StoreContext {
 export function trustedFact(facts: FactRows, field: string): FactsRow | null {
   return facts.find((f) => f.field === field && (f.trust === 'T1' || f.trust === 'T2')) ?? null;
 }
+
+// ── Article-mode grounding ──────────────────────────────────────────────────
+//
+// Articles do not have a single source product. The internal FactsTable holds
+// only what the brand can assert about ITSELF without an external citation
+// (brand identity + facts about the brand's own products). Every EXTERNAL
+// factual claim must instead carry an inline citation, validated downstream by
+// the citation-verify layer. HARD STOP on unconfirmed brand still applies.
+
+export type ArticleGroundInput = {
+  topic: string;
+  brand: BrandProfile;
+  store?: Partial<StoreContext>;
+  authority?: SiteAuthority;
+  /** brand's own products the article may reference as internal facts. */
+  relatedProducts?: NormalizedProduct[];
+};
+
+export type ArticleGroundResult = {
+  facts: FactRows;
+  gaps: Gap[];
+  store: StoreContext;
+  authority: SiteAuthority;
+  provenanceFlags: GuardrailFlag[];
+  topic: string;
+  /** synthetic target so the shared filter/select layers can score topic overlap. */
+  pseudoProduct: NormalizedProduct;
+};
+
+const INTERNAL_FIELDS = new Set(['material', 'width', 'care', 'pile', 'colorCount', 'soldAs', 'price.low', 'price.high']);
+
+export function groundArticle(input: ArticleGroundInput): ArticleGroundResult {
+  const { topic, brand } = input;
+  if (!brand.confirmed) throw new BrandUnconfirmedError(brand.name);
+
+  const store: StoreContext = {
+    currency: input.store?.currency ?? 'USD',
+    locale: input.store?.locale ?? 'en-US',
+    primaryDomain: input.store?.primaryDomain ?? brand.primaryDomain,
+  };
+  const authority: SiteAuthority = input.authority ?? { dr: null, source: 'web-estimate' };
+
+  const facts: FactRows = [];
+  facts.push({ field: 'brand', value: brand.vendorName, source: 'brand profile', trust: 'T1' });
+  facts.push({ field: 'domain', value: brand.primaryDomain, source: 'brand profile', trust: 'T1' });
+
+  // internal facts about the brand's own products (assertable without citation).
+  for (const p of input.relatedProducts ?? []) {
+    const g = groundProduct({ product: p, brand, store: input.store, authority });
+    for (const f of g.facts) {
+      if (f.trust === 'T3') continue;
+      if (!INTERNAL_FIELDS.has(f.field)) continue;
+      facts.push({
+        field: `product:${p.title}:${f.field}`,
+        value: f.value,
+        source: `internal catalog (${p.title}) ${f.source}`,
+        trust: f.trust,
+      });
+    }
+  }
+
+  const gaps: Gap[] = [
+    { field: 'external-stats', note: 'Any market/industry statistic must carry an inline citation to a high-authority source (validated by citation-verify).' },
+  ];
+
+  const pseudoProduct: NormalizedProduct = {
+    id: `article:${topic}`,
+    title: topic,
+    handle: slugUnit(topic),
+    bodyHtml: '',
+    vendor: brand.vendorName,
+    productType: '',
+    tags: [],
+    options: [],
+    variants: [],
+    imageCount: 0,
+  };
+
+  return { facts, gaps, store, authority, provenanceFlags: [], topic, pseudoProduct };
+}

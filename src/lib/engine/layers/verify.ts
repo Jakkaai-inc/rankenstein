@@ -16,6 +16,8 @@ import type {
   FactRows,
   PieceDraft,
   EngineVerdict,
+  Citation,
+  CitationVerdict,
 } from '../types';
 import type { Verifier } from '../providers';
 import { countH1, findEmDashes, stripTags } from '../html';
@@ -126,6 +128,89 @@ function isParseable(obj: Record<string, unknown>): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * ARTICLE grader (RUBRIC Part A, article variant). A1 here means: every external
+ * factual claim carries an inline citation, every citation loads + supports the
+ * claim (+ high authority for health/finance/legal), and no numeric stat is
+ * asserted uncited. Internal brand facts (FactsTable) may be asserted directly.
+ */
+export function gradeArticle(
+  piece: PieceDraft,
+  facts: FactRows,
+  citations: Citation[],
+  citationVerdicts: CitationVerdict[],
+  mode: 'independent' | 'self-check',
+): EngineVerdict {
+  const { fields } = trustedFactBlob(facts);
+  const factBlob = fields.map((f) => f.value).join(' ').toLowerCase();
+  const bodyText = stripTags(piece.html);
+  const ld = JSON.stringify(piece.jsonld);
+  const surface = `${bodyText} ${piece.meta.title} ${piece.meta.description} ${ld}`;
+  const citationText = citations.map((c) => `${c.claim} ${c.anchor}`).join(' ').toLowerCase();
+
+  const claimTrace: InternalClaimTrace[] = [];
+
+  // ---- citation verdicts ----------------------------------------------------
+  const failedCitations = citationVerdicts.filter((v) => !(v.loads && v.supportsClaim && v.authorityOk));
+  for (const v of citationVerdicts) {
+    const ok = v.loads && v.supportsClaim && v.authorityOk;
+    claimTrace.push({
+      claim: `citation: ${v.citation.anchor}`,
+      source: v.citation.url,
+      trust: ok ? 'T2' : null,
+      grounded: ok,
+    });
+  }
+  // every citation must be linked inline in the body
+  const unlinked = citations.filter((c) => !piece.html.includes(c.url));
+
+  // ---- uncited numeric claims ----------------------------------------------
+  const numbers = bodyText.match(/\d+(?:\.\d+)?/g) ?? [];
+  const seen = new Set<string>();
+  const uncited: string[] = [];
+  for (const n of numbers) {
+    if (seen.has(n)) continue;
+    seen.add(n);
+    const grounded = factBlob.includes(n) || citationText.includes(n);
+    claimTrace.push({
+      claim: n,
+      source: grounded ? (factBlob.includes(n) ? 'internal fact' : 'citation') : null,
+      trust: grounded ? 'T2' : null,
+      grounded,
+    });
+    if (!grounded) uncited.push(n);
+  }
+
+  // ---- structure / schema / voice ------------------------------------------
+  const a1 = failedCitations.length === 0 && uncited.length === 0 && unlinked.length === 0;
+  const a2 = countH1(piece.html) === 1 && /<h2[^>]*>\s*FAQ/i.test(piece.html) && /<p[\s>]/i.test(piece.html);
+  const a3 =
+    isParseable(piece.jsonld) && /"Article"/.test(ld) && /"FAQPage"/.test(ld) && !/aggregateRating/i.test(ld);
+  const a4 = !findEmDashes(surface);
+
+  const perGate: EngineVerdict['perGate'] = {
+    'A1.grounding': {
+      pass: a1,
+      note: a1
+        ? 'All external claims cited + verified; no uncited stats.'
+        : `Issues: ${[
+            failedCitations.length ? `${failedCitations.length} citation(s) failed verify` : '',
+            uncited.length ? `uncited numbers: ${uncited.join(', ')}` : '',
+            unlinked.length ? `${unlinked.length} citation(s) not linked inline` : '',
+          ].filter(Boolean).join('; ')}`,
+    },
+    'A2.aeo-structure': { pass: a2, note: a2 ? 'One h1, FAQ, lead present.' : 'Missing h1/FAQ/lead.' },
+    'A3.structured-data': {
+      pass: a3,
+      note: a3 ? 'Article + FAQPage JSON-LD parse; no fabricated ratings.' : 'JSON-LD must include Article + FAQPage and no aggregateRating.',
+    },
+    'A4.brand-voice': { pass: a4, note: a4 ? 'No em dashes.' : 'Em dash present.' },
+  };
+
+  const verdict = Object.values(perGate).every((g) => g.pass) ? 'pass' : 'fail';
+  return { verdict, mode, perGate, claimTrace };
 }
 
 /** Offline verifier. Its verdict is labeled "self-check" and never satisfies
