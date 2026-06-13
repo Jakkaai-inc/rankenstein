@@ -84,7 +84,7 @@ export async function syncCatalog(projectId: string): Promise<SyncResult> {
   }
 
   for (const a of articles) {
-    const blogHandle = a.blog?.handle ?? "news";
+    const blogHandle = a.blog?.handle ?? "blogs";
     const url = `${origin}/blogs/${blogHandle}/${a.handle}`;
     await prisma.page.upsert({
       where: { projectId_url: { projectId, url } },

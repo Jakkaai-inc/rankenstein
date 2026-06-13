@@ -149,6 +149,20 @@ async function deleteArticle(client: AdminClient, blogNumericId: string, article
   await client.rest("DELETE", `/blogs/${blogNumericId}/articles/${articleId}.json`);
 }
 
+/**
+ * Resolve a blog's real handle (blog handles are arbitrary, not always "news").
+ * Falls back to "blogs" only if the blog read fails, so the URL is still rooted
+ * correctly even on an unexpected store shape.
+ */
+async function fetchBlogHandle(client: AdminClient, blogNumericId: string): Promise<string> {
+  try {
+    const data = await client.rest<{ blog: { handle: string } }>("GET", `/blogs/${blogNumericId}.json`);
+    return data.blog?.handle ?? "blogs";
+  } catch {
+    return "blogs";
+  }
+}
+
 // ── public: publish ──────────────────────────────────────────────────────────
 
 export interface PublishResult {
@@ -233,7 +247,8 @@ export async function publishContentItem(contentItemId: string): Promise<Publish
 
   const articleGid = `gid://shopify/Article/${publishedArticle.id}`;
   const origin = connection.primaryDomain ? `https://${connection.primaryDomain}` : `https://${connection.shopDomain}`;
-  const publishedUrl = `${origin}/blogs/news/${publishedArticle.handle}`;
+  const blogHandle = await fetchBlogHandle(client, blogNumericId);
+  const publishedUrl = `${origin}/blogs/${blogHandle}/${publishedArticle.handle}`;
   await prisma.contentItem.update({
     where: { id: contentItemId },
     // persist the created article gid in sourceRef so future publish/rollback target it.
