@@ -22,7 +22,7 @@ export function validateResearch(candidates: KeywordCandidate[]): void {
     throw new Error('research layer produced zero candidates');
   }
   for (const c of candidates) {
-    if (c.source === 'provider' && c.volume === null && c.kd === null) {
+    if (c.source === 'provider-verified' && c.volume === null && c.kd === null) {
       // allowed but suspicious; provider rows usually carry numbers. Not fatal.
     }
     if (c.source === 'web-estimate') {

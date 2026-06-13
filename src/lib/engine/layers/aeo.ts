@@ -5,7 +5,7 @@
 // differentiation (>=1 unique fact/number), one-paragraph test. Blocking
 // findings must be fixed before the verifier runs.
 
-import type { AeoFinding, FactsTable, PieceDraft } from '../types';
+import type { AeoFinding, FactRows, PieceDraft } from '../types';
 import { stripTags } from '../html';
 
 function firstParagraph(html: string): string {
@@ -17,7 +17,7 @@ function sentenceCount(text: string): number {
   return text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 3).length;
 }
 
-export function aeoCheck(draft: PieceDraft, facts: FactsTable, primaryKeyword: string): AeoFinding[] {
+export function aeoCheck(draft: PieceDraft, facts: FactRows, primaryKeyword: string): AeoFinding[] {
   const findings: AeoFinding[] = [];
   const bodyText = stripTags(draft.html);
   const lead = firstParagraph(draft.html);

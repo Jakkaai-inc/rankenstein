@@ -11,8 +11,8 @@
 // guardrails/gates/verifier, so an agent that invents a claim gets caught too.
 
 import type {
-  FactsTable,
-  FactsTableRow,
+  FactRows,
+  FactsRow,
   PieceDraft,
   PieceMeta,
 } from '../types';
@@ -21,10 +21,10 @@ import { escapeHtml } from '../html';
 
 // ---- fact lookup ----------------------------------------------------------
 
-type FactMap = Map<string, FactsTableRow>;
+type FactMap = Map<string, FactsRow>;
 
 /** Highest-trust (T1 > T2) value per field; T3 is never included (unassertable). */
-function buildFactMap(facts: FactsTable): FactMap {
+function buildFactMap(facts: FactRows): FactMap {
   const order = { T1: 0, T2: 1, T3: 2 } as const;
   const m: FactMap = new Map();
   for (const f of facts) {
@@ -208,7 +208,7 @@ class TemplateRewriter implements Rewriter {
       care,
       priceLow,
       priceHigh,
-      currency: input.store.currency,
+      currency: input.store.currency ?? 'USD',
       inStock: /[1-9]/.test(val(m, 'availability') ?? '0'),
     });
 

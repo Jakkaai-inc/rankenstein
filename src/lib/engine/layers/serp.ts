@@ -5,7 +5,7 @@
 // SerpProvider. Offline we use a fixture + a deterministic winnability heuristic
 // derived from keyword difficulty and the provided site authority.
 
-import type { KeywordCandidate, SerpVerdict, SiteAuthority, Winnable } from '../types';
+import type { KeywordCandidate, SerpOwnership, SiteAuthority, Winnable } from '../types';
 import type { SerpProvider } from '../providers';
 
 /**
@@ -24,12 +24,12 @@ export function estimateWinnable(kd: number | null, authority: SiteAuthority): W
 
 /** Fixture provider: fixed verdicts where known, heuristic everywhere else. */
 export class FixtureSerpProvider implements SerpProvider {
-  constructor(private readonly fixture: Record<string, Partial<SerpVerdict>>) {}
+  constructor(private readonly fixture: Record<string, Partial<SerpOwnership>>) {}
 
   async ownership(
     candidates: KeywordCandidate[],
     siteAuthority: SiteAuthority,
-  ): Promise<SerpVerdict[]> {
+  ): Promise<SerpOwnership[]> {
     return candidates.map((c) => {
       const f = this.fixture[c.keyword] ?? {};
       return {

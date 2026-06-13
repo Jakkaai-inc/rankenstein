@@ -3,12 +3,13 @@
 // Shopify) depending on which implementation the orchestrator is handed.
 
 import type {
-  FactsTable,
+  EngineVerdict,
+  FactRows,
   KeywordCandidate,
   PieceDraft,
-  SerpVerdict,
+  SerpOwnership,
   SiteAuthority,
-  VerifierVerdict,
+  StoreContext,
 } from './types';
 
 export interface ResearchProvider {
@@ -20,13 +21,13 @@ export interface SerpProvider {
   ownership(
     candidates: KeywordCandidate[],
     siteAuthority: SiteAuthority,
-  ): Promise<SerpVerdict[]>;
+  ): Promise<SerpOwnership[]>;
 }
 
 /** Input handed to a rewriter (template or strong-tier agent). */
 export type RewriteInput = {
-  facts: FactsTable;
-  store: { currency: string; locale: string; primaryDomain: string };
+  facts: FactRows;
+  store: StoreContext;
   /** selection result, kept loose to avoid a cycle with select types. */
   selection: import('./types').Selection;
   brandVoiceNote: string;
@@ -42,5 +43,5 @@ export interface Rewriter {
 
 export interface Verifier {
   readonly mode: 'independent' | 'self-check';
-  verify(piece: PieceDraft, facts: FactsTable): Promise<VerifierVerdict>;
+  verify(piece: PieceDraft, facts: FactRows): Promise<EngineVerdict>;
 }

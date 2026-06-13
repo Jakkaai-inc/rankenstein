@@ -11,7 +11,7 @@
 
 import type {
   BrandProfile,
-  FactsTable,
+  FactRows,
   Gap,
   GuardrailFlag,
   PieceDraft,
@@ -22,7 +22,7 @@ import { stripTags } from '../html';
 
 export type GuardrailInput = {
   draft: PieceDraft;
-  facts: FactsTable;
+  facts: FactRows;
   brand: BrandProfile;
   gaps: Gap[];
   selection: Selection;

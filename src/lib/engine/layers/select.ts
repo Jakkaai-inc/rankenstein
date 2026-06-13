@@ -18,7 +18,7 @@ import type {
   Registry,
   Selection,
   SelectedKeyword,
-  SerpVerdict,
+  SerpOwnership,
   VariantKeywordMap,
 } from '../types';
 import { tokenize, productTokens } from '../catalog';
@@ -57,7 +57,7 @@ function mapToVariant(keyword: string, optionValues: string[]): string | null {
   return null;
 }
 
-function score(c: KeywordCandidate, serp: SerpVerdict | undefined, thisTokens: Set<string>): number {
+function score(c: KeywordCandidate, serp: SerpOwnership | undefined, thisTokens: Set<string>): number {
   const w = serp ? WINNABLE_WEIGHT[serp.winnable] : 0.6;
   const vol = c.volume ?? 10; // unknown volume gets a small default, never 0
   const overlap = tokenize(c.keyword).filter((t) => thisTokens.has(t)).length;
@@ -73,7 +73,7 @@ function setOverlapPct(a: string[] | undefined, b: string[] | undefined): number
 
 export function selectKeywords(
   filtered: FilterResult,
-  serpVerdicts: SerpVerdict[],
+  serpVerdicts: SerpOwnership[],
   target: NormalizedProduct,
   registry: Registry = { entries: [] },
 ): Selection {
@@ -154,7 +154,7 @@ export function selectKeywords(
   const primary: SelectedKeyword = { candidate: primaryCand, role: 'primary', serp: serpMap.get(primaryCand.keyword) };
   const secondaries: SelectedKeyword[] = ranked
     .filter((c) => c !== primaryCand)
-    .map((c) => ({ candidate: c, role: 'secondary' as const, serp: serpMap.get(c.keyword) }))
+    .map((c): SelectedKeyword => ({ candidate: c, role: 'secondary', serp: serpMap.get(c.keyword) }))
     .concat(faqs);
 
   // 5. history decision.

@@ -12,10 +12,10 @@
 // review count) fails the piece.
 
 import type {
-  ClaimTrace,
-  FactsTable,
+  InternalClaimTrace,
+  FactRows,
   PieceDraft,
-  VerifierVerdict,
+  EngineVerdict,
 } from '../types';
 import type { Verifier } from '../providers';
 import { countH1, findEmDashes, stripTags } from '../html';
@@ -23,14 +23,14 @@ import { countH1, findEmDashes, stripTags } from '../html';
 const CERT_RE = /\b(GOTS|OEKO-?TEX|GREENGUARD|bluesign|FSC|fair\s?trade)\b/gi;
 const REVIEW_TEXT_RE = /\b(rated|reviews?|ratings?|stars?)\b/i;
 
-function trustedFactBlob(facts: FactsTable): { blob: string; fields: { field: string; value: string; trust: 'T1' | 'T2' }[] } {
+function trustedFactBlob(facts: FactRows): { blob: string; fields: { field: string; value: string; trust: 'T1' | 'T2' }[] } {
   const fields = facts
     .filter((f) => f.trust === 'T1' || f.trust === 'T2')
     .map((f) => ({ field: f.field, value: f.value, trust: f.trust as 'T1' | 'T2' }));
   return { blob: fields.map((f) => f.value).join(' ').toLowerCase(), fields };
 }
 
-function traceNumber(num: string, fields: { field: string; value: string; trust: 'T1' | 'T2' }[]): ClaimTrace {
+function traceNumber(num: string, fields: { field: string; value: string; trust: 'T1' | 'T2' }[]): InternalClaimTrace {
   const hit = fields.find((f) => f.value.toLowerCase().includes(num.toLowerCase()));
   return hit
     ? { claim: num, source: `${hit.field} ("${hit.value}")`, trust: hit.trust, grounded: true }
@@ -38,19 +38,20 @@ function traceNumber(num: string, fields: { field: string; value: string; trust:
 }
 
 /** Pure grader. mode is stamped by the caller (independent vs self-check). */
-export function gradePiece(piece: PieceDraft, facts: FactsTable, mode: 'independent' | 'self-check'): VerifierVerdict {
+export function gradePiece(piece: PieceDraft, facts: FactRows, mode: 'independent' | 'self-check'): EngineVerdict {
   const { fields } = trustedFactBlob(facts);
   const bodyText = stripTags(piece.html);
   const ld = JSON.stringify(piece.jsonld);
   const surface = `${bodyText} ${piece.meta.title} ${piece.meta.description} ${ld}`;
   const reviewsPresent = facts.find((f) => f.field === 'reviews.present')?.value === 'true';
 
-  const claimTrace: ClaimTrace[] = [];
+  const claimTrace: InternalClaimTrace[] = [];
 
   // ---- numeric claims -------------------------------------------------------
-  const numbers = (bodyText.match(/\d+(?:\.\d+)?/g) ?? []).concat(
-    (piece.meta.description.match(/\d+(?:\.\d+)?/g) ?? []),
-  );
+  const numbers: string[] = [
+    ...(bodyText.match(/\d+(?:\.\d+)?/g) ?? []),
+    ...(piece.meta.description.match(/\d+(?:\.\d+)?/g) ?? []),
+  ];
   const seen = new Set<string>();
   for (const n of numbers) {
     if (seen.has(n)) continue;
@@ -91,7 +92,7 @@ export function gradePiece(piece: PieceDraft, facts: FactsTable, mode: 'independ
   const a4Voice = !hasEmDash;
   const a2Structure = countH1(piece.html) === 1 && /<table[\s>]/i.test(piece.html) && /<h2[^>]*>\s*FAQ/i.test(piece.html);
 
-  const perGate: VerifierVerdict['perGate'] = {
+  const perGate: EngineVerdict['perGate'] = {
     'A1.grounding': {
       pass: a1Grounding,
       note: a1Grounding
@@ -131,7 +132,7 @@ function isParseable(obj: Record<string, unknown>): boolean {
  *  the layer PASS in automated runs (the pipeline enforces that). */
 export class SelfCheckVerifier implements Verifier {
   readonly mode = 'self-check' as const;
-  async verify(piece: PieceDraft, facts: FactsTable): Promise<VerifierVerdict> {
+  async verify(piece: PieceDraft, facts: FactRows): Promise<EngineVerdict> {
     return gradePiece(piece, facts, 'self-check');
   }
 }
@@ -141,8 +142,8 @@ export class SelfCheckVerifier implements Verifier {
  *  same deterministic grounding math as a backstop. */
 export class IndependentVerifier implements Verifier {
   readonly mode = 'independent' as const;
-  constructor(private readonly grader?: (piece: PieceDraft, facts: FactsTable) => Promise<VerifierVerdict>) {}
-  async verify(piece: PieceDraft, facts: FactsTable): Promise<VerifierVerdict> {
+  constructor(private readonly grader?: (piece: PieceDraft, facts: FactRows) => Promise<EngineVerdict>) {}
+  async verify(piece: PieceDraft, facts: FactRows): Promise<EngineVerdict> {
     if (this.grader) return this.grader(piece, facts);
     return gradePiece(piece, facts, 'independent');
   }

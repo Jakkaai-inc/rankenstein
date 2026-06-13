@@ -12,8 +12,8 @@
 
 import type {
   BrandProfile,
-  FactsTable,
-  FactsTableRow,
+  FactRows,
+  FactsRow,
   Gap,
   GroundResult,
   GuardrailFlag,
@@ -78,7 +78,7 @@ export function groundProduct(input: GroundInput): GroundResult {
   };
   const authority: SiteAuthority = input.authority ?? { dr: null, source: 'web-estimate' };
 
-  const facts: FactsTable = [];
+  const facts: FactRows = [];
   const gaps: Gap[] = [];
   const provenanceFlags: GuardrailFlag[] = [];
 
@@ -143,9 +143,8 @@ export function groundProduct(input: GroundInput): GroundResult {
       facts.push({
         field: `price.${slugUnit(unit)}`,
         value: Math.min(...ps).toFixed(2),
-        source: `variants[].price where ${unitOptionName}=${unit}`,
+        source: `variants[].price where ${unitOptionName}=${unit} (${unit})`,
         trust: 'T1',
-        label: unit,
       });
     }
   }
@@ -192,9 +191,8 @@ export function groundProduct(input: GroundInput): GroundResult {
       facts.push({
         field,
         value: line.value,
-        source: `body_html:spec-line "${line.label}"`,
+        source: `body_html:spec-line "${line.label}" (merchant-stated)`,
         trust: 'T2',
-        label: 'merchant-stated',
       });
     }
     // T3: remaining prose (the non-list narrative), captured but never asserted.
@@ -259,6 +257,6 @@ export function defaultStore(brand: BrandProfile): StoreContext {
 }
 
 /** Look up a single trusted fact value (T1/T2) by field; null if not grounded. */
-export function trustedFact(facts: FactsTable, field: string): FactsTableRow | null {
+export function trustedFact(facts: FactRows, field: string): FactsRow | null {
   return facts.find((f) => f.field === field && (f.trust === 'T1' || f.trust === 'T2')) ?? null;
 }

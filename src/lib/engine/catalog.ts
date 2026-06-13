@@ -67,7 +67,10 @@ export function countMatching(index: CatalogIndex, tokens: string[]): number {
     const set = index.inverted.get(t);
     if (!set) return 0;
     if (acc === null) acc = new Set(set);
-    else acc = new Set([...acc].filter((x) => set.has(x)));
+    else {
+      const prev: Set<number> = acc;
+      acc = new Set(Array.from(prev).filter((x) => set.has(x)));
+    }
     if (acc.size === 0) return 0;
   }
   return acc ? acc.size : 0;
