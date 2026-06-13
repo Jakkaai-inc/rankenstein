@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
+/* Force a single light theme: the app uses explicit Tailwind colors, so OS dark
+   mode previously left light cards on a dark body. color-scheme:light also keeps
+   native form controls light. */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -12,15 +16,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
 }

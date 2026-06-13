@@ -1,115 +1,146 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { confirmBrandProfile, draftBrand, runBatch } from "@/app/actions";
+import { runBatch } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-function Step({ n, title, done, current, children }: { n: number; title: string; done: boolean; current: boolean; children: React.ReactNode }) {
+function Stat({ label, value, tone = "default" }: { label: string; value: React.ReactNode; tone?: "default" | "green" | "amber" }) {
+  const toneCls = tone === "green" ? "text-green-700" : tone === "amber" ? "text-amber-700" : "text-gray-900";
   return (
-    <section className={`rounded-lg border p-4 ${!done && !current ? "opacity-60" : ""}`}>
-      <h2 className="flex items-center gap-2 font-semibold">
-        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs text-white ${done ? "bg-green-700" : current ? "bg-black" : "bg-gray-300"}`}>{done ? "✓" : n}</span>
-        {title}
-      </h2>
-      <div className="mt-3">{children}</div>
-    </section>
+    <div className="rounded-xl border bg-white p-4">
+      <div className={`text-2xl font-bold ${toneCls}`}>{value}</div>
+      <div className="mt-0.5 text-xs uppercase tracking-wide text-gray-500">{label}</div>
+    </div>
   );
 }
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const account = await getAccount();
   if (!account) redirect("/");
   const { id } = await params;
+
   const project = await prisma.project.findFirst({
     where: { id, accountId: account.id },
     include: {
       brandProfile: true,
-      shopify: true,
+      shopify: { select: { shopDomain: true } },
       runs: { orderBy: { createdAt: "desc" }, take: 5 },
-      _count: { select: { pieces: true, pages: true } },
     },
   });
   if (!project) notFound();
 
+  const grouped = await prisma.contentItem.groupBy({ by: ["status"], where: { projectId: id }, _count: true });
+  const count = (s: string) => grouped.find((g) => g.status === s)?._count ?? 0;
+  const products = await prisma.page.count({ where: { projectId: id, type: "PRODUCT" } });
+  const pending = count("PENDING_REVIEW");
+  const approved = count("APPROVED");
+  const publishedCount = count("PUBLISHED");
+  const flagged = count("FAILED");
+
   const connected = !!project.shopify;
   const brandConfirmed = project.brandProfile?.confirmed ?? false;
-  const p = project.brandProfile;
+  const ready = connected && brandConfirmed;
+
+  const publishedItems = await prisma.contentItem.findMany({
+    where: { projectId: id, status: "PUBLISHED", publishedUrl: { not: null } },
+    orderBy: { publishedAt: "desc" },
+    take: 10,
+    select: { id: true, title: true, publishedUrl: true, publishedAt: true, primaryKeyword: true },
+  });
 
   return (
-    <main className="mx-auto max-w-3xl space-y-5 p-8">
-      <header>
-        <Link href="/projects" className="text-sm text-gray-500">← projects</Link>
-        <h1 className="text-2xl font-bold">{project.name}</h1>
-        <p className="text-sm text-gray-500">{project.siteUrl} · {project._count.pages} pages · {project._count.pieces} pieces</p>
-      </header>
-
-      <Step n={1} title="Connect Shopify" done={connected} current={!connected}>
-        {connected ? (
-          <p className="text-sm text-gray-600">Connected: {project.shopify!.shopDomain}</p>
-        ) : (
-          <form action="/api/shopify/install" method="get" className="flex flex-wrap items-end gap-2">
-            <input type="hidden" name="projectId" value={project.id} />
-            <label className="text-sm">
-              Store domain
-              <input name="shop" placeholder="your-store.myshopify.com" className="mt-1 block w-72 rounded border p-2" required />
-            </label>
-            <button className="rounded bg-black px-4 py-2 text-sm text-white">Connect store with OAuth</button>
-          </form>
-        )}
-      </Step>
-
-      <Step n={2} title="Brand guidelines" done={brandConfirmed} current={connected && !brandConfirmed}>
-        <p className="mb-3 text-sm text-gray-600">Drafted from the site crawl. Nothing generates until you confirm. Research starts from your seed topics.</p>
-        <form action={draftBrand} className="mb-3">
-          <input type="hidden" name="projectId" value={project.id} />
-          <button className="rounded border px-3 py-1.5 text-sm">{p ? "Re-draft from site" : "Draft from site crawl"}</button>
-        </form>
-        <form action={confirmBrandProfile} className="space-y-2 text-sm">
-          <input type="hidden" name="projectId" value={project.id} />
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">Brand name<input name="brandName" defaultValue={p?.brandName ?? project.name} className="mt-1 w-full rounded border p-2" required /></label>
-            <label className="block">Industry<input name="industry" defaultValue={p?.industry ?? ""} placeholder="e.g. minky fabric & sewing" className="mt-1 w-full rounded border p-2" /></label>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Overview</h1>
+        {ready && (
+          <div className="flex items-center gap-2">
+            <form action={runBatch}>
+              <input type="hidden" name="projectId" value={id} />
+              <input type="hidden" name="limit" value="2" />
+              <button className="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white">Generate a batch</button>
+            </form>
+            <Link href="/review" className="rounded-md border bg-white px-4 py-2 text-sm font-medium">Review queue ({pending})</Link>
           </div>
-          <label className="block">Seed topics (comma-separated) <span className="text-red-600">*</span><input name="seedTopics" defaultValue={(p?.seedTopics ?? []).join(", ")} placeholder="minky fabric, baby blanket fabric, how to wash minky" className="mt-1 w-full rounded border p-2" required /></label>
-          <label className="block">Audience<textarea name="audience" defaultValue={p?.audience ?? ""} rows={2} className="mt-1 w-full rounded border p-2" /></label>
-          <label className="block">Voice<textarea name="voice" defaultValue={p?.voice ?? ""} rows={2} className="mt-1 w-full rounded border p-2" /></label>
-          <label className="block">Brand facts (only what is true)<textarea name="brandFacts" defaultValue={p?.brandFacts ?? ""} rows={3} className="mt-1 w-full rounded border p-2" /></label>
-          <label className="block">Competitors (comma-separated)<input name="competitors" defaultValue={(p?.competitors ?? []).join(", ")} className="mt-1 w-full rounded border p-2" /></label>
-          <button className="rounded bg-black px-4 py-2 text-white">{brandConfirmed ? "Update profile" : "Confirm & unlock generation"}</button>
-        </form>
-      </Step>
-
-      <Step n={3} title="Configure & run" done={false} current={brandConfirmed}>
-        {brandConfirmed ? (
-          <div className="space-y-2 text-sm">
-            <p className="text-gray-600">Generate a grounded batch from your catalog. Pieces land in the review queue; nothing publishes without your approval.</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <form action={runBatch}>
-                <input type="hidden" name="projectId" value={project.id} />
-                <input type="hidden" name="limit" value="2" />
-                <button className="rounded bg-black px-4 py-2 text-white">Generate a batch</button>
-              </form>
-              <Link href="/review" className="rounded border px-4 py-2">Review queue ({project._count.pieces})</Link>
-            </div>
-            <p className="text-xs text-gray-400">Generation runs the full engine (research → ground → rewrite → verify) and can take ~30-60s per batch.</p>
-          </div>
-        ) : (
-          <p className="text-sm text-amber-700">Locked — confirm the brand guidelines first.</p>
         )}
-      </Step>
+      </div>
 
-      <section className="rounded-lg border p-4">
-        <h2 className="font-semibold">Activity</h2>
-        <ul className="mt-2 space-y-1 text-sm">
-          {project.runs.map((r) => (
-            <li key={r.id} className="text-gray-600">{r.status.toLowerCase()} · {r.done}/{r.total} done · {r.flagged} flagged · {r.createdAt.toISOString().slice(0, 16).replace("T", " ")}</li>
-          ))}
-          {project.runs.length === 0 && <li className="text-gray-400">No runs yet.</li>}
-        </ul>
+      {/* Setup nudge when not ready */}
+      {!ready && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <b>Finish setup to start generating.</b>{" "}
+          {!connected && "Connect your Shopify store"}{!connected && !brandConfirmed && " and "}
+          {!brandConfirmed && "confirm your brand profile"}.{" "}
+          <Link href={`/projects/${id}/settings`} className="font-semibold underline">Go to Settings →</Link>
+        </div>
+      )}
+
+      {/* Status strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+        <div className="rounded-xl border bg-white p-4">
+          <div className={`text-sm font-semibold ${connected ? "text-green-700" : "text-gray-400"}`}>{connected ? "● Connected" : "○ Not connected"}</div>
+          <div className="mt-0.5 text-xs text-gray-500">{project.shopify?.shopDomain ?? "Shopify"}</div>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <div className={`text-sm font-semibold ${brandConfirmed ? "text-green-700" : "text-gray-400"}`}>{brandConfirmed ? "● Brand ready" : "○ Brand pending"}</div>
+          <div className="mt-0.5 truncate text-xs text-gray-500">{project.brandProfile?.brandName ?? "—"}</div>
+        </div>
+        <Stat label="Products" value={products} />
+        <Stat label="Pending review" value={pending} tone={pending ? "amber" : "default"} />
+        <Stat label="Approved" value={approved} />
+        <Stat label="Published live" value={publishedCount} tone={publishedCount ? "green" : "default"} />
+      </div>
+
+      {/* Live publish proof */}
+      <section className="rounded-xl border bg-white">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 className="font-semibold">Published live</h2>
+          <Link href={`/projects/${id}/content`} className="text-sm text-blue-700 hover:underline">All content →</Link>
+        </div>
+        {publishedItems.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-400">Nothing published yet. Approve a piece in the review queue, then publish it to your store.</p>
+        ) : (
+          <ul className="divide-y">
+            {publishedItems.map((it) => (
+              <li key={it.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{it.title}</div>
+                  <div className="truncate text-xs text-gray-500">{it.primaryKeyword}{it.publishedAt ? ` · ${it.publishedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}</div>
+                </div>
+                <a href={it.publishedUrl!} target="_blank" rel="noreferrer" className="shrink-0 rounded border px-3 py-1 text-xs text-blue-700 hover:bg-blue-50">View live ↗</a>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
-    </main>
+
+      {/* Activity + triage */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="rounded-xl border bg-white">
+          <div className="border-b px-4 py-3"><h2 className="font-semibold">Recent runs</h2></div>
+          <ul className="divide-y text-sm">
+            {project.runs.map((r) => (
+              <li key={r.id} className="flex items-center justify-between px-4 py-2.5 text-gray-600">
+                <span>{r.status.toLowerCase()} · {r.done}/{r.total} done · {r.flagged} flagged</span>
+                <span className="text-xs text-gray-400">{r.createdAt.toISOString().slice(0, 16).replace("T", " ")}</span>
+              </li>
+            ))}
+            {project.runs.length === 0 && <li className="px-4 py-6 text-gray-400">No runs yet.</li>}
+          </ul>
+        </section>
+        <section className="rounded-xl border bg-white">
+          <div className="border-b px-4 py-3"><h2 className="font-semibold">Triage</h2></div>
+          <div className="px-4 py-3 text-sm text-gray-600">
+            {flagged > 0 ? (
+              <>{flagged} piece(s) were <b>flagged by the verifier</b> and held out of the review queue (ungrounded claims caught before they reached a human).</>
+            ) : (
+              <span className="text-gray-400">No flagged pieces. The grounding verifier passed everything in the queue.</span>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
