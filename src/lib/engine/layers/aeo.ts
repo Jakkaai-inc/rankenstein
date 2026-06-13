@@ -28,8 +28,10 @@ export function aeoCheck(
   const lead = firstParagraph(draft.html);
 
   // three-sentence test: who / what / how-different. Heuristic: lead has >=3
-  // sentences and mentions the primary keyword.
-  const leadOk = sentenceCount(lead) >= 3 && lead.toLowerCase().includes(primaryKeyword.toLowerCase().split(' ')[0]);
+  // sentences and mentions a significant token from the primary keyword.
+  const kwTokens = primaryKeyword.toLowerCase().split(/\s+/).filter((t) => t.length > 3);
+  const leadMentionsTopic = kwTokens.length === 0 || kwTokens.some((t) => lead.toLowerCase().includes(t));
+  const leadOk = sentenceCount(lead) >= 3 && leadMentionsTopic;
   findings.push({
     check: 'three-sentence',
     pass: leadOk,

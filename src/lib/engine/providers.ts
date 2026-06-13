@@ -105,3 +105,13 @@ export interface ArticleDrafter {
 export interface CitationChecker {
   check(citation: Citation): Promise<CitationVerdict>;
 }
+
+export interface ArticleVerifier {
+  readonly mode: 'independent' | 'self-check';
+  verify(
+    piece: PieceDraft,
+    facts: FactRows,
+    citations: Citation[],
+    citationVerdicts: CitationVerdict[],
+  ): Promise<EngineVerdict>;
+}

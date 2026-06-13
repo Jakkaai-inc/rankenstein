@@ -17,13 +17,18 @@ import type {
   CatalogIndex,
 } from './catalog';
 import type {
+  AngleSet,
+  Angle,
   BrandProfile,
+  CitationVerdict,
   EngineVerdict,
   GateViolation,
   GroundResult,
   GuardrailFlag,
   AeoFinding,
   NormalizedProduct,
+  Outline,
+  PieceDraft,
   PieceResult,
   Registry,
   RunConfig,
@@ -32,11 +37,27 @@ import type {
   StoreContext,
   VariantKeywordMap,
 } from './types';
-import type { ResearchProvider, SerpProvider, Rewriter, Verifier, RewriteInput } from './providers';
-import { groundProduct, BrandUnconfirmedError } from './layers/ground';
+import type {
+  ResearchProvider,
+  SerpProvider,
+  Rewriter,
+  Verifier,
+  RewriteInput,
+  AngleProvider,
+  OutlineProvider,
+  OutlineCritic,
+  ArticleDrafter,
+  ArticleSource,
+  CitationChecker,
+  ArticleVerifier,
+} from './providers';
+import { groundProduct, groundArticle, BrandUnconfirmedError, type ArticleGroundResult } from './layers/ground';
 import { validateResearch } from './layers/research';
 import { filterKeywords, EZ_FABRIC_FILTER_CONFIG, type FilterConfig } from './layers/filter';
 import { selectKeywords } from './layers/select';
+import { validateAngle } from './layers/angle';
+import { runOutlineLoop } from './layers/outline';
+import { verifyCitations, citationsBlocking, failedCitations } from './layers/citation-verify';
 import { aeoCheck, aeoBlockingFailures } from './layers/aeo';
 import { guardrails, hasBlockingFlag } from './layers/guardrails';
 import { runGates } from './layers/gates';
@@ -63,6 +84,10 @@ export type EngineRunResult = {
   gateViolations: GateViolation[];
   haltReason?: string;
   log: StageLog[];
+  // article-only extras (null/empty for product runs)
+  angle?: AngleSet | null;
+  outline?: Outline | null;
+  citations?: CitationVerdict[];
 };
 
 export type RunDeps = {

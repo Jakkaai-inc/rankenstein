@@ -59,12 +59,11 @@ export async function structuredCall<T>(args: StructuredCall): Promise<T> {
   const { client, tier, system, user } = args;
   const model = MODELS[tier];
   const max_tokens = args.maxTokens ?? 4096;
-  const temperature = args.temperature ?? 0.4;
 
+  // NOTE: temperature is omitted - some current models (e.g. Opus 4.8) reject it.
   const first = await client.messages.create({
     model,
     max_tokens,
-    temperature,
     system,
     messages: [{ role: 'user', content: user }],
   });
@@ -75,7 +74,6 @@ export async function structuredCall<T>(args: StructuredCall): Promise<T> {
     const retry = await client.messages.create({
       model,
       max_tokens,
-      temperature: 0,
       system,
       messages: [
         { role: 'user', content: user },

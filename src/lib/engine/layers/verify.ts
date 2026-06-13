@@ -19,7 +19,7 @@ import type {
   Citation,
   CitationVerdict,
 } from '../types';
-import type { Verifier } from '../providers';
+import type { Verifier, ArticleVerifier } from '../providers';
 import { countH1, findEmDashes, stripTags } from '../html';
 
 const CERT_RE = /\b(GOTS|OEKO-?TEX|GREENGUARD|bluesign|FSC|fair\s?trade)\b/gi;
@@ -231,5 +231,22 @@ export class IndependentVerifier implements Verifier {
   async verify(piece: PieceDraft, facts: FactRows): Promise<EngineVerdict> {
     if (this.grader) return this.grader(piece, facts);
     return gradePiece(piece, facts, 'independent');
+  }
+}
+
+/** Independent article verifier; deterministic gradeArticle backstop by default. */
+export class IndependentArticleVerifier implements ArticleVerifier {
+  readonly mode = 'independent' as const;
+  constructor(
+    private readonly grader?: (
+      piece: PieceDraft,
+      facts: FactRows,
+      citations: Citation[],
+      verdicts: CitationVerdict[],
+    ) => Promise<EngineVerdict>,
+  ) {}
+  async verify(piece: PieceDraft, facts: FactRows, citations: Citation[], verdicts: CitationVerdict[]): Promise<EngineVerdict> {
+    if (this.grader) return this.grader(piece, facts, citations, verdicts);
+    return gradeArticle(piece, facts, citations, verdicts, 'independent');
   }
 }
