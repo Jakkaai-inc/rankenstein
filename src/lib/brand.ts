@@ -7,11 +7,31 @@ import { llmJson } from "./llm";
 
 function stripHtml(html: string): string {
   return html
+    // drop non-content regions first so the body prose survives the slice
+    // (a heavy Shopify <head> is all <link>/<meta> boilerplate, not brand text).
+    .replace(/<head[\s\S]*?<\/head>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<(nav|header|footer)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// High-signal brand text that lives in <head>: title + meta/og description.
+// Extracted from the RAW html before stripHtml removes the head.
+function metaSignals(html: string): string {
+  const pick = (re: RegExp) => (html.match(re)?.[1] ?? "").trim();
+  const title = pick(/<title[^>]*>([^<]*)<\/title>/i);
+  const ogTitle = pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+  const desc =
+    pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
+    pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+  return [title && `Title: ${title}`, ogTitle && `OG title: ${ogTitle}`, desc && `Description: ${desc}`]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function fetchText(url: string): Promise<string | null> {
@@ -62,7 +82,11 @@ export async function draftBrandFromSite(siteUrl: string): Promise<{
     (await fetchText(`${base}/pages/about`)) ??
     (await fetchText(`${base}/pages/about-us`));
 
-  const corpus = [stripHtml(home).slice(0, 6000), about ? stripHtml(about).slice(0, 4000) : ""]
+  const corpus = [
+    metaSignals(home),
+    stripHtml(home).slice(0, 8000),
+    about ? stripHtml(about).slice(0, 5000) : "",
+  ]
     .filter(Boolean)
     .join("\n\n---\n\n");
 
