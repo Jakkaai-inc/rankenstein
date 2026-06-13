@@ -50,7 +50,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         {connected ? (
           <p className="text-sm text-gray-600">Connected: {project.shopify!.shopDomain}</p>
         ) : (
-          <a href={`/api/shopify/connect?projectId=${project.id}`} className="inline-block rounded bg-black px-4 py-2 text-sm text-white">Connect store with OAuth</a>
+          <form action="/api/shopify/install" method="get" className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="projectId" value={project.id} />
+            <label className="text-sm">
+              Store domain
+              <input name="shop" placeholder="your-store.myshopify.com" className="mt-1 block w-72 rounded border p-2" required />
+            </label>
+            <button className="rounded bg-black px-4 py-2 text-sm text-white">Connect store with OAuth</button>
+          </form>
         )}
       </Step>
 
