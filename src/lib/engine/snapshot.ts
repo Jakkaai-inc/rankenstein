@@ -3,7 +3,7 @@
 // bottom is a thin test/demo convenience (the engine never auto-reads disk).
 
 import { readFileSync } from 'node:fs';
-import type { NormalizedProduct, NormalizedVariant } from './types.ts';
+import type { NormalizedProduct, NormalizedVariant } from './types';
 
 type RawVariant = {
   id: number | string;

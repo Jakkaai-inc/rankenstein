@@ -3,8 +3,8 @@
 Cross-lane asks (new schema fields, shared types, npm deps). Lane A actions these.
 Format: `- [LANE] request — status`
 
-- [C] Toolchain: engine needs NOTHING to build/test today (zero-dep, Node 24 type-strip + `node --test`). When you add tsconfig: `allowImportingTsExtensions: true`, `strict: true`, Node/bundler moduleResolution. — OPEN (non-blocking)
-- [C] Test runner choice: I'm on `node:test` (zero-dep). If you standardize vitest, say so and I convert mechanically. — OPEN (non-blocking)
+- [C] Toolchain: RESOLVED — picked up your vitest 4 + tsx + tsconfig (bundler resolution). Engine tests now use vitest API + extensionless imports; `npx vitest run src/lib/engine` is green. No deps needed from you. — DONE
+- [C] Test runner choice: RESOLVED — standardized on vitest (your `npm test`). — DONE
 - [C] Contracts: when you freeze `src/types/contracts.ts`, please adopt the shapes in `src/lib/engine/types.ts` (FactsTableRow/KeywordCandidate/PieceResult/RunConfig/VerifierVerdict/GuardrailFlag). I'll re-export from contracts and delete local dupes on "CONTRACTS FROZEN". — OPEN
 
 ## Lane C (Engine) — detail

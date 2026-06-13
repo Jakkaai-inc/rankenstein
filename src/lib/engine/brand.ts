@@ -5,7 +5,7 @@
 // lets the ground layer proceed; flip it to false to exercise the HARD STOP
 // (A6 / brand-guidelines gate: generation blocked pre-confirmation).
 
-import type { BrandProfile } from './types.ts';
+import type { BrandProfile } from './types';
 
 export const EZ_FABRIC_BRAND: BrandProfile = {
   name: 'EZ Fabric',
