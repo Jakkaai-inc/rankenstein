@@ -25,4 +25,6 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 EXPOSE 8080
-CMD ["node", "server.js"]
+# App Runner injects HOSTNAME (the container hostname), which Next standalone
+# would bind to instead of 0.0.0.0 — health probe then can't connect. Force it.
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 PORT=8080 node server.js"]
