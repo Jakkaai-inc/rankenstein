@@ -10,6 +10,7 @@ import { adminClient, fetchShopContext, saveConnection, normalizeShopDomain, SHO
 import { prisma } from "@/lib/db";
 import { runCatalogRewrite, runArticleBatch } from "@/lib/run/orchestrator";
 import { deriveSlug } from "@/lib/slug";
+import { makeClient, MODELS } from "@/lib/engine";
 
 // Server actions are thin FormData adapters over the shared service layer
 // (src/lib/services/*). The same services back the /api/v1 routes the mobile
@@ -120,6 +121,105 @@ export async function connectStoreWithToken(formData: FormData) {
   const slug = await projectSlug(projectId);
   revalidatePath(`/p/${slug}`, "layout");
   redirect(`/p/${slug}/settings`);
+}
+
+// ── First-run onboarding: intent -> content calendar ─────────────────────────
+// The user picks what they want (create/edit articles, improve product content).
+// If articles are in scope, Rankenstein proposes a calendar of article topics from
+// the confirmed brand's seed topics and saves them as PLANNED articles (kind=ARTICLE,
+// status=DRAFTING, brief.scheduledFor weekly). They become "Generate now" rows in the
+// Articles tab. No facts are invented — these are topic ideas, grounded later at draft.
+
+interface PlannedTopic {
+  title: string;
+  primaryKeyword: string;
+  rationale?: string;
+}
+
+async function proposeArticleTopics(brand: { brandName: string; industry?: string | null; audience?: string | null; seedTopics: string[] }, count: number): Promise<PlannedTopic[]> {
+  const client = makeClient();
+  const sys =
+    "You are an SEO content strategist. Propose blog article topics a store can realistically rank for. " +
+    "Each topic must be specific and useful to the audience, with a long-tail primary keyword (buyer- or how-to-intent). " +
+    "Never invent product facts. Return ONLY a JSON array, no prose.";
+  const user = `Brand: ${brand.brandName}${brand.industry ? ` (${brand.industry})` : ""}.
+Audience: ${brand.audience ?? "general shoppers"}.
+Seed topics: ${brand.seedTopics.join(", ") || brand.industry || brand.brandName}.
+
+Propose ${count} article topics. Return a JSON array of objects:
+[{"title": "...", "primaryKeyword": "...", "rationale": "one short reason this wins"}]`;
+  const msg = await client.messages.create({ model: MODELS.strong, max_tokens: 1500, system: sys, messages: [{ role: "user", content: user }] });
+  const text = msg.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
+  const json = text.slice(text.indexOf("["), text.lastIndexOf("]") + 1);
+  const parsed = JSON.parse(json) as PlannedTopic[];
+  return parsed.filter((t) => t?.title && t?.primaryKeyword).slice(0, count);
+}
+
+export async function planContentCalendar(formData: FormData) {
+  const account = await requireAccount();
+  const projectId = String(formData.get("projectId"));
+  const goals = String(formData.get("goals") ?? "").split(",").filter(Boolean); // create_articles | edit_articles | improve_products
+  const count = Math.min(12, Math.max(3, Number(formData.get("count") ?? 8)));
+
+  const project = await prisma.project.findFirst({ where: { id: projectId, accountId: account.id }, include: { brandProfile: true, shopify: { select: { shopDomain: true } } } });
+  if (!project) throw new Error("NOT_FOUND");
+  const slug = deriveSlug(project);
+
+  if (goals.includes("create_articles") && project.brandProfile?.confirmed) {
+    const bp = project.brandProfile;
+    const topics = await proposeArticleTopics({ brandName: bp.brandName ?? project.name, industry: bp.industry, audience: bp.audience, seedTopics: bp.seedTopics ?? [] }, count);
+
+    // schedule weekly, starting next Monday
+    const start = new Date();
+    start.setHours(9, 0, 0, 0);
+    const day = start.getDay();
+    start.setDate(start.getDate() + ((8 - day) % 7 || 7));
+
+    await prisma.$transaction(
+      topics.map((t, i) => {
+        const scheduledFor = new Date(start);
+        scheduledFor.setDate(start.getDate() + i * 7);
+        return prisma.contentItem.create({
+          data: {
+            projectId, kind: "ARTICLE", action: "CREATE", status: "DRAFTING",
+            title: t.title, primaryKeyword: t.primaryKeyword,
+            brief: { scheduledFor: scheduledFor.toISOString(), rationale: t.rationale ?? null, planned: true } as never,
+          },
+        });
+      }),
+    );
+  }
+
+  revalidatePath(`/p/${slug}`, "layout");
+  // route to the calendar (articles) when planning, else products
+  redirect(goals.includes("improve_products") && !goals.includes("create_articles") ? `/p/${slug}/products` : `/p/${slug}/articles`);
+}
+
+// Generate one PLANNED calendar article. The placeholder (DRAFTING) is removed first
+// so the engine's dedup doesn't skip the topic, then runArticleBatch creates the real
+// piece (PENDING_REVIEW) for that exact topic.
+export async function generatePlannedArticle(formData: FormData) {
+  const account = await requireAccount();
+  const itemId = String(formData.get("itemId"));
+  const item = await prisma.contentItem.findFirst({ where: { id: itemId, project: { accountId: account.id } } });
+  if (!item) throw new Error("NOT_FOUND");
+  const topic = item.primaryKeyword || item.title;
+  if (!topic) throw new Error("planned item has no topic");
+
+  await prisma.contentItem.delete({ where: { id: item.id } });
+  const run = await prisma.run.create({ data: { projectId: item.projectId, status: "QUEUED" } });
+  await runArticleBatch({ projectId: item.projectId, runId: run.id, topics: [topic], limit: 1 });
+  revalidatePath(`/p/${await projectSlug(item.projectId)}`, "layout");
+}
+
+// Remove a planned calendar entry.
+export async function removePlannedArticle(formData: FormData) {
+  const account = await requireAccount();
+  const itemId = String(formData.get("itemId"));
+  const item = await prisma.contentItem.findFirst({ where: { id: itemId, status: "DRAFTING", project: { accountId: account.id } } });
+  if (!item) throw new Error("NOT_FOUND");
+  await prisma.contentItem.delete({ where: { id: item.id } });
+  revalidatePath(`/p/${await projectSlug(item.projectId)}`, "layout");
 }
 
 export async function ensureAccountForDev() {

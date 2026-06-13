@@ -48,7 +48,7 @@ export default function ProjectSwitcher({ projects, currentSlug }: { projects: S
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/p" className="gap-2">
+          <Link href="/p/new" className="gap-2">
             <Plus className="size-4" /> New project
           </Link>
         </DropdownMenuItem>

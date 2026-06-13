@@ -8,6 +8,7 @@ import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import WelcomeDialog from "@/components/dashboard/WelcomeDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +52,12 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
     select: { id: true, title: true, publishedUrl: true, publishedAt: true, primaryKeyword: true },
   });
 
+  const totalPieces = grouped.reduce((n, g) => n + g._count, 0);
+  const fresh = totalPieces === 0 && (full?.runs.length ?? 0) === 0;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {fresh && <WelcomeDialog projectId={project.id} brandConfirmed={brandConfirmed} />}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Overview</h1>
         {ready && (
