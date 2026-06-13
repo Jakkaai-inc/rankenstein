@@ -10,6 +10,15 @@ import type {
   SerpOwnership,
   SiteAuthority,
   StoreContext,
+  Angle,
+  AngleSet,
+  ArticleDraft,
+  BrandProfile,
+  Citation,
+  CitationTopic,
+  CitationVerdict,
+  Outline,
+  OutlineCritique,
 } from './types';
 
 export interface ResearchProvider {
@@ -46,4 +55,53 @@ export interface Rewriter {
 export interface Verifier {
   readonly mode: 'independent' | 'self-check';
   verify(piece: PieceDraft, facts: FactRows): Promise<EngineVerdict>;
+}
+
+// ── Article-pipeline provider interfaces ────────────────────────────────────
+
+export interface AngleProvider {
+  /** 4 lens angles + the chosen one. */
+  angles(brand: BrandProfile, primaryKeyword: string, serp: SerpOwnership[]): Promise<AngleSet>;
+}
+
+export interface OutlineProvider {
+  /** priorIssues lets the enforced loop regenerate fixing EVERY critic issue. */
+  outline(
+    angle: Angle,
+    keywords: string[],
+    wordTarget: { min: number; max: number },
+    priorIssues?: string[],
+  ): Promise<Outline>;
+}
+
+export interface OutlineCritic {
+  /** adversarial, fresh context. */
+  critique(outline: Outline, serp: SerpOwnership[]): Promise<OutlineCritique>;
+}
+
+export type ArticleSource = {
+  url: string;
+  title?: string;
+  topic?: CitationTopic;
+  /** the specific claim this source supports (may contain a stat/number). */
+  claim?: string;
+};
+
+export type ArticleDraftInput = {
+  outline: Outline;
+  facts: FactRows;
+  brandVoiceNote: string;
+  vendorName: string;
+  internalLinks?: { url: string; anchor: string }[];
+  /** external sources the drafter may cite for non-internal claims. */
+  sources?: ArticleSource[];
+};
+
+export interface ArticleDrafter {
+  readonly id: string;
+  draft(input: ArticleDraftInput): Promise<ArticleDraft>;
+}
+
+export interface CitationChecker {
+  check(citation: Citation): Promise<CitationVerdict>;
 }
