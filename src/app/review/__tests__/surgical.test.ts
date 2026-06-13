@@ -52,6 +52,50 @@ describe("surgicalEditPiece", () => {
     expect(r.perComment[0].resolution).toMatch(/could not re-anchor/);
     expect(r.newHtml).toBe(HTML);
   });
+
+  it("reports a NO-OP honestly when the editor returns the span unchanged", async () => {
+    // Editor echoes the span back (the real-world failure: a removal request the
+    // model declined to act on). Must NOT be counted as a change.
+    const edit: SpanEditFn = async ({ targetHtml }) => targetHtml;
+    const feedback: FeedbackSet = {
+      pieceId: "p1",
+      version: 1,
+      comments: [{ id: "c1", version: 1, anchor: spanAnchor("soft fabric"), body: "remove this", modality: "text" }],
+    };
+    const r = await surgicalEditPiece(HTML, feedback, edit);
+    expect(r.changed).toBe(0);
+    expect(r.newHtml).toBe(HTML); // nothing written
+    expect(r.edits[0].changed).toBe(false);
+    expect(r.perComment[0].resolution).toMatch(/no change/i);
+  });
+
+  it("supports DELETION (editor returns empty for a removal) and records before/after", async () => {
+    const edit: SpanEditFn = async () => ""; // delete the span
+    const feedback: FeedbackSet = {
+      pieceId: "p1",
+      version: 1,
+      comments: [{ id: "c1", version: 1, anchor: spanAnchor("soft fabric"), body: "delete this", modality: "text" }],
+    };
+    const r = await surgicalEditPiece(HTML, feedback, edit);
+    expect(r.changed).toBe(1);
+    expect(r.newHtml).not.toContain("soft fabric");
+    expect(r.newHtml).toContain("<h1>Spotted Dove Snuggle</h1>"); // heading untouched
+    expect(r.edits[0]).toMatchObject({ before: "soft fabric", after: "", changed: true });
+    expect(r.surgical).toBe(true);
+  });
+
+  it("records before/after on a real rewrite", async () => {
+    const edit: SpanEditFn = async ({ quote }) => quote.replace("soft", "plush");
+    const feedback: FeedbackSet = {
+      pieceId: "p1",
+      version: 1,
+      comments: [{ id: "c1", version: 1, anchor: spanAnchor("soft fabric"), body: "richer", modality: "text" }],
+    };
+    const r = await surgicalEditPiece(HTML, feedback, edit);
+    expect(r.changed).toBe(1);
+    expect(r.edits[0].before).toBe("soft fabric");
+    expect(r.edits[0].after).toBe("plush fabric");
+  });
 });
 
 describe("verifySurgical (independent of the splicer)", () => {

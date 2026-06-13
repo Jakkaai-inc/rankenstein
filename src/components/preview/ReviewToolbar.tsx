@@ -66,9 +66,9 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
           <button
             className="rounded-md bg-[#b5651d] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             disabled={applying || openComments === 0}
-            title={openComments === 0 ? "No open comments to apply" : "Rewrite only the commented spans, then prove nothing else changed"}
+            title={openComments === 0 ? "Leave a comment first, then this rewrites only the commented spans" : "Rewrite only the commented spans, then prove nothing else changed"}
           >
-            {applying ? "Applying…" : `Apply review (${openComments})`}
+            {applying ? "Applying…" : `Apply comments (${openComments})`}
           </button>
         </form>
 
@@ -104,6 +104,12 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
           </form>
         )}
       </div>
+
+      {(status === "PENDING_REVIEW" || status === "CHANGES_REQUESTED") && (
+        <p className="mt-2 text-xs text-gray-500">
+          Highlight text to comment, then <b>Apply comments</b> to rewrite only those spans (you will see the before and after). <b>Approve</b> when you are happy.
+        </p>
+      )}
 
       {status === "PUBLISHED" && publishedUrl && (
         <div className="mt-3 rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-900">
@@ -148,6 +154,26 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
             </>
           ) : (
             <>{outcome.error ?? "Nothing applied."}</>
+          )}
+
+          {/* Before -> after for each commented span, so "verified" is shown, not just asserted. */}
+          {outcome.edits && outcome.edits.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {outcome.edits.map((e, i) => (
+                <div key={i} className="rounded border bg-white/70 p-2 text-xs">
+                  {e.changed ? (
+                    <>
+                      <div className="text-gray-500">before</div>
+                      <div className="rounded bg-red-50 px-1.5 py-1 text-red-900 line-through decoration-red-400">{e.before || "(empty)"}</div>
+                      <div className="mt-1 text-gray-500">after</div>
+                      <div className="rounded bg-green-50 px-1.5 py-1 text-green-900">{e.after || "(removed)"}</div>
+                    </>
+                  ) : (
+                    <div className="text-gray-600">No change to: <span className="italic">{`"${e.before.length > 80 ? e.before.slice(0, 79) + "…" : e.before}"`}</span></div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

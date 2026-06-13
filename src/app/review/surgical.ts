@@ -28,11 +28,29 @@ interface PlannedEdit {
   span: ResolvedSpan;
 }
 
+// What actually changed for one comment — so the UI can show before -> after
+// instead of a blind "trust me" banner, and so a no-op (editor returned the
+// span unchanged) is reported honestly rather than as a success.
+export interface SpanChange {
+  commentId: string;
+  before: string;
+  after: string;
+  changed: boolean;
+}
+
+// Superset of the frozen SurgicalEditResult contract. The canonical fields
+// (newHtml/perComment/surgical/untouchedSectionsChanged) are unchanged; we add
+// `edits` (per-span before/after) and `changed` (count that actually moved).
+export interface SurgicalEditDetail extends SurgicalEditResult {
+  edits: SpanChange[];
+  changed: number;
+}
+
 export async function surgicalEditPiece(
   html: string,
   feedback: FeedbackSet,
   edit: SpanEditFn,
-): Promise<SurgicalEditResult> {
+): Promise<SurgicalEditDetail> {
   const proj = htmlToText(html);
   const perComment: SurgicalEditResult["perComment"] = [];
   const planned: PlannedEdit[] = [];
@@ -66,6 +84,7 @@ export async function surgicalEditPiece(
   // Splice right-to-left so earlier offsets stay valid as we mutate the string.
   let newHtml = html;
   const allowed: { start: number; end: number }[] = [];
+  const edits: SpanChange[] = [];
   for (let k = accepted.length - 1; k >= 0; k--) {
     const { comment, span } = accepted[k];
     const slice = sliceByText(newHtml, span.start, span.end, k === accepted.length - 1 ? proj : undefined);
@@ -76,13 +95,25 @@ export async function surgicalEditPiece(
       perComment.push({ commentId: comment.id, resolution: `edit failed — left unchanged (${(err as Error).message})` });
       continue;
     }
+    // Honest no-op handling: if the editor returned the span unchanged, do not
+    // claim it was rewritten and do not count it as a change.
+    const beforeText = htmlToText(slice.target).text.trim();
+    const afterText = htmlToText(replacement).text.trim();
+    const changed = replacement.trim() !== slice.target.trim();
+    edits.push({ commentId: comment.id, before: beforeText, after: afterText, changed });
+    if (!changed) {
+      perComment.push({ commentId: comment.id, resolution: `no change — the editor returned the span unchanged for "${truncate(span.quote, 50)}". Rephrase the note (for removals: "delete this row/sentence").` });
+      // Leave newHtml untouched for this span; do not add to allowed (nothing moved).
+      continue;
+    }
     newHtml = slice.before + replacement + slice.after;
     perComment.push({ commentId: comment.id, resolution: `applied to span "${truncate(span.quote, 60)}"` });
     allowed.push({ start: span.start, end: span.end });
   }
 
   const { surgical, untouchedSectionsChanged } = verifySurgical(html, newHtml, allowed);
-  return { newHtml, perComment, surgical, untouchedSectionsChanged };
+  const changed = edits.filter((e) => e.changed).length;
+  return { newHtml, perComment, surgical, untouchedSectionsChanged, edits, changed };
 }
 
 // ── Independent verifier ─────────────────────────────────────────────────────

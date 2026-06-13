@@ -57,7 +57,7 @@ export async function deleteComment(formData: FormData): Promise<void> {
 // note, grounded, no invented facts, no em dashes, HTML tags preserved. Uses the
 // engine's proven Anthropic client (strong tier, no temperature — Opus rejects it).
 const SYSTEM =
-  "You are a precise copy editor. You revise exactly one highlighted span of a published-quality product page and return only that span. You never invent facts (no GSM, certifications, prices, reviews, or claims not already present). You never use em dashes. You preserve HTML tags exactly and only change the human-readable text inside them.";
+  "You are a precise copy editor. You revise exactly one highlighted span of a published-quality product page and return only that span. You never invent facts (no GSM, certifications, prices, reviews, or claims not already present). You never use em dashes. You preserve the surrounding HTML structure and only change the human-readable text inside it. If the reviewer asks you to REMOVE or DELETE content (a row, sentence, clause, or field), do it: return the span with that content removed, keeping any wrapping tags valid (e.g. drop an entire <tr> if a whole table row should go, or return an empty string if the whole span should be deleted). Deletion is allowed; fabrication is not.";
 
 const spanEditor: SpanEditFn = async ({ targetHtml, quote, instruction }) => {
   const client = makeClient();
@@ -68,7 +68,7 @@ const spanEditor: SpanEditFn = async ({ targetHtml, quote, instruction }) => {
     messages: [
       {
         role: "user",
-        content: `Apply the reviewer's instruction to ONLY this span and return the revised span. Return ONLY the revised span text/HTML, nothing else (no quotes, no explanation, no code fence).
+        content: `Apply the reviewer's instruction to ONLY this span and return the revised span. Return ONLY the revised span text/HTML, nothing else (no quotes, no explanation, no code fence). If the instruction asks to remove or delete the content, return the span with that content removed (an empty string if the whole span should go).
 
 HIGHLIGHTED SPAN (HTML):
 ${targetHtml}
@@ -99,6 +99,9 @@ export interface ApplyReviewOutcome {
   applied: number;
   newVersion?: number;
   error?: string;
+  // Per-span before -> after so the UI shows what actually changed (or that
+  // nothing did) instead of a blind success banner.
+  edits?: { before: string; after: string; changed: boolean }[];
 }
 
 export async function applyReview(formData: FormData): Promise<ApplyReviewOutcome> {
@@ -127,14 +130,30 @@ export async function applyReview(formData: FormData): Promise<ApplyReviewOutcom
 
   const feedback: FeedbackSet = { pieceId, version, comments };
   const result = await surgicalEditPiece(piece.html, feedback, spanEditor);
+  const editsView = result.edits.map((e) => ({ before: e.before, after: e.after, changed: e.changed }));
 
   // Refuse to write anything that touched an uncommented section.
   if (!result.surgical) {
-    return { ok: false, surgical: false, untouchedSectionsChanged: result.untouchedSectionsChanged, applied: 0, error: "edit changed sections that were not commented on; not applied" };
+    return { ok: false, surgical: false, untouchedSectionsChanged: result.untouchedSectionsChanged, applied: 0, error: "edit changed sections that were not commented on; not applied", edits: editsView };
   }
 
+  // Honest no-op: the editor ran but changed nothing. Do NOT save a duplicate
+  // version or claim success — tell the reviewer so they can rephrase.
+  if (result.changed === 0) {
+    return {
+      ok: false,
+      surgical: true,
+      untouchedSectionsChanged: [],
+      applied: 0,
+      error: "The editor made no change to your commented span(s). For a removal, comment \"delete this row/sentence\"; otherwise rephrase the instruction.",
+      edits: editsView,
+    };
+  }
+
+  // Only the comments whose span actually changed are resolved + counted.
+  const changedIds = new Set(result.edits.filter((e) => e.changed).map((e) => e.commentId));
   const appliedIds = comments
-    .filter((c) => c.anchor.mode === "span")
+    .filter((c) => c.anchor.mode === "span" && changedIds.has(c.id))
     .map((c) => c.id);
   const newVersion = version + 1;
 
@@ -144,12 +163,14 @@ export async function applyReview(formData: FormData): Promise<ApplyReviewOutcom
       data: { contentItemId: pieceId, version: newVersion, html: result.newHtml, note: `surgical edit: ${appliedIds.length} comment(s)` },
     }),
     prisma.contentItem.update({ where: { id: pieceId }, data: { html: result.newHtml, status: "PENDING_REVIEW" } }),
-    prisma.comment.updateMany({ where: { id: { in: comments.map((c) => c.id) } }, data: { resolved: true } }),
+    // Resolve only the comments that actually produced a change. No-op comments
+    // stay open so the reviewer can rephrase and re-apply them.
+    prisma.comment.updateMany({ where: { id: { in: appliedIds } }, data: { resolved: true } }),
   ]);
 
   revalidatePath(`/review/${pieceId}`);
   revalidatePath("/review");
-  return { ok: true, surgical: true, untouchedSectionsChanged: [], applied: appliedIds.length, newVersion };
+  return { ok: true, surgical: true, untouchedSectionsChanged: [], applied: appliedIds.length, newVersion, edits: editsView };
 }
 
 export async function approve(formData: FormData): Promise<void> {
