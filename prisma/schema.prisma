@@ -257,6 +257,8 @@ model ContentItem {
   status ContentStatus @default(DRAFTING)
   priority Int          @default(0) // higher first
 
+  sourceRef       String? // source product handle/gid — dedup across run-steps
+
   title           String?
   slug            String?
   metaTitle       String?
@@ -283,6 +285,7 @@ model ContentItem {
 
   @@index([projectId, status])
   @@index([runId, priority])
+  @@index([projectId, sourceRef])
 }
 
 // Snapshot BEFORE every push -> rollback.
