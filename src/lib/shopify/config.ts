@@ -23,8 +23,10 @@ export function shopifyConfig(): ShopifyAppConfig {
   if (!apiKey || !apiSecret) {
     throw new Error("SHOPIFY_API_KEY / SHOPIFY_API_SECRET not set in the environment");
   }
-  // APP_URL is the canonical origin; default to localhost for dev OAuth.
-  const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  // Origin for the OAuth callback. SHOPIFY_APP_URL is the canonical infra var
+  // (Lane A); APP_URL is accepted as an alias. Default to localhost for dev.
+  // Getting this wrong points redirect_uri at localhost and Shopify rejects it.
+  const appUrl = (process.env.SHOPIFY_APP_URL ?? process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return {
     apiKey,
     apiSecret,
