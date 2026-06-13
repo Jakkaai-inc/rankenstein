@@ -1,0 +1,17 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to ECR
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+      - IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:-manual}
+  build:
+    commands:
+      - echo Building image
+      - docker build -t $ECR_REGISTRY/rankenstein-web:latest -t $ECR_REGISTRY/rankenstein-web:$IMAGE_TAG .
+  post_build:
+    commands:
+      - echo Pushing image
+      - docker push $ECR_REGISTRY/rankenstein-web:latest
+      - docker push $ECR_REGISTRY/rankenstein-web:$IMAGE_TAG
+      - echo Done $IMAGE_TAG
