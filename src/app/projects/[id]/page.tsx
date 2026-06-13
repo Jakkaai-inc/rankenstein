@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { confirmBrandProfile, draftBrand } from "@/app/actions";
+import { confirmBrandProfile, draftBrand, runBatch } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 
@@ -85,11 +85,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       <Step n={3} title="Configure & run" done={false} current={brandConfirmed}>
         {brandConfirmed ? (
           <div className="space-y-2 text-sm">
-            <p className="text-gray-600">Pick content type and layers, then run. Pieces land in the review queue; nothing publishes without your approval.</p>
-            <div className="flex gap-3">
-              <Link href={`/projects/${project.id}/run`} className="rounded bg-black px-4 py-2 text-white">Configure a run</Link>
-              <Link href={`/projects/${project.id}/review`} className="rounded border px-4 py-2">Review queue ({project._count.pieces})</Link>
+            <p className="text-gray-600">Generate a grounded batch from your catalog. Pieces land in the review queue; nothing publishes without your approval.</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <form action={runBatch}>
+                <input type="hidden" name="projectId" value={project.id} />
+                <input type="hidden" name="limit" value="2" />
+                <button className="rounded bg-black px-4 py-2 text-white">Generate a batch</button>
+              </form>
+              <Link href="/review" className="rounded border px-4 py-2">Review queue ({project._count.pieces})</Link>
             </div>
+            <p className="text-xs text-gray-400">Generation runs the full engine (research → ground → rewrite → verify) and can take ~30-60s per batch.</p>
           </div>
         ) : (
           <p className="text-sm text-amber-700">Locked — confirm the brand guidelines first.</p>

@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { getAccount, requireAccount, signIn, signOut } from "@/lib/session";
 import { confirmBrand, draftBrandForProject } from "@/lib/services/brand";
 import { createProject as createProjectSvc } from "@/lib/services/projects";
+import { prisma } from "@/lib/db";
+import { runCatalogRewrite } from "@/lib/run/orchestrator";
 
 // Server actions are thin FormData adapters over the shared service layer
 // (src/lib/services/*). The same services back the /api/v1 routes the mobile
@@ -52,6 +54,20 @@ export async function confirmBrandProfile(formData: FormData) {
     seedTopics: String(formData.get("seedTopics") ?? "").split(","),
     competitors: String(formData.get("competitors") ?? "").split(","),
   });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+// Generate a small grounded batch into the review queue. Synchronous (small
+// limit) so the customer sees pieces land; the orchestrator skips already-done
+// products via sourceRef, so repeat clicks advance the catalog.
+export async function runBatch(formData: FormData) {
+  const account = await requireAccount();
+  const projectId = String(formData.get("projectId"));
+  const limit = Math.min(3, Math.max(1, Number(formData.get("limit") ?? 2)));
+  const project = await prisma.project.findFirst({ where: { id: projectId, accountId: account.id } });
+  if (!project) throw new Error("NOT_FOUND");
+  const run = await prisma.run.create({ data: { projectId, status: "QUEUED" } });
+  await runCatalogRewrite({ projectId, runId: run.id, limit });
   revalidatePath(`/projects/${projectId}`);
 }
 
