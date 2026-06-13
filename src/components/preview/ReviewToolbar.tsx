@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation";
 
 import type { ApplyReviewOutcome } from "@/app/review/actions";
 import type { PublishOutcome, LiveRollbackOutcome } from "@/app/review/publish";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 interface Props {
   pieceId: string;
@@ -57,40 +59,40 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
   return (
     <div className="mb-5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">{status.toLowerCase().replace("_", " ")}</span>
-        <span className="text-xs text-gray-400">v{currentVersion}</span>
+        <Badge variant="secondary">{status.toLowerCase().replace("_", " ")}</Badge>
+        <span className="text-muted-foreground text-xs">v{currentVersion}</span>
         <span className="flex-1" />
 
         <form action={runApply}>
           <input type="hidden" name="pieceId" value={pieceId} />
-          <button
-            className="rounded-md bg-[#b5651d] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          <Button
+            type="submit"
             disabled={applying || openComments === 0}
             title={openComments === 0 ? "Leave a comment first, then this rewrites only the commented spans" : "Rewrite only the commented spans, then prove nothing else changed"}
           >
             {applying ? "Applying…" : `Apply comments (${openComments})`}
-          </button>
+          </Button>
         </form>
 
         <form action={requestEmailReview}>
           <input type="hidden" name="pieceId" value={pieceId} />
-          <button className="rounded-md border px-4 py-2 text-sm font-medium">Email for review</button>
+          <Button type="submit" variant="outline">Email for review</Button>
         </form>
 
         <form action={approve}>
           <input type="hidden" name="pieceId" value={pieceId} />
-          <button className="rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={status === "APPROVED" || status === "PUBLISHED"}>
+          <Button type="submit" className="bg-emerald-600 text-white hover:bg-emerald-600/90" disabled={status === "APPROVED" || status === "PUBLISHED"}>
             {status === "APPROVED" || status === "PUBLISHED" ? "Approved" : "Approve"}
-          </button>
+          </Button>
         </form>
 
         {/* Live publish — only available once a human has APPROVED the piece. */}
         {status === "APPROVED" && (
           <form action={runPublish}>
             <input type="hidden" name="pieceId" value={pieceId} />
-            <button className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={publishing} title="Snapshot the live store, then push this approved rewrite to the storefront">
+            <Button type="submit" disabled={publishing} title="Snapshot the live store, then push this approved rewrite to the storefront">
               {publishing ? "Publishing…" : "Publish to store"}
-            </button>
+            </Button>
           </form>
         )}
 
@@ -98,15 +100,15 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
         {status === "PUBLISHED" && (
           <form action={runRollbackLive}>
             <input type="hidden" name="pieceId" value={pieceId} />
-            <button className="rounded-md border border-amber-500 px-4 py-2 text-sm font-semibold text-amber-700 disabled:opacity-50" disabled={rollingBack} title="Restore the snapshot taken before publish to the live store">
+            <Button type="submit" variant="outline" className="border-amber-500 text-amber-700" disabled={rollingBack} title="Restore the snapshot taken before publish to the live store">
               {rollingBack ? "Rolling back…" : "Roll back live"}
-            </button>
+            </Button>
           </form>
         )}
       </div>
 
       {(status === "PENDING_REVIEW" || status === "CHANGES_REQUESTED") && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="text-muted-foreground mt-2 text-xs">
           Highlight text to comment, then <b>Apply comments</b> to rewrite only those spans (you will see the before and after). <b>Approve</b> when you are happy.
         </p>
       )}
@@ -180,19 +182,19 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
 
       {versions.length > 1 && (
         <details className="mt-3 text-sm">
-          <summary className="cursor-pointer text-gray-500">Version history ({versions.length})</summary>
+          <summary className="text-muted-foreground cursor-pointer">Version history ({versions.length})</summary>
           <ul className="mt-2 space-y-1">
             {[...versions]
               .sort((a, b) => b.version - a.version)
               .map((v) => (
                 <li key={v.version} className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-gray-500">v{v.version}</span>
-                  <span className="flex-1 truncate text-gray-600">{v.note ?? ""}</span>
+                  <span className="text-muted-foreground font-mono text-xs">v{v.version}</span>
+                  <span className="text-muted-foreground flex-1 truncate">{v.note ?? ""}</span>
                   {v.version !== currentVersion && (
                     <form action={rollback}>
                       <input type="hidden" name="pieceId" value={pieceId} />
                       <input type="hidden" name="version" value={v.version} />
-                      <button className="text-xs text-amber-700 hover:underline">restore</button>
+                      <Button type="submit" variant="link" size="sm" className="h-auto p-0 text-amber-700">restore</Button>
                     </form>
                   )}
                 </li>

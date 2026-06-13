@@ -5,6 +5,8 @@ import { signOutAction } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import Sidebar from "@/components/dashboard/Sidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -32,28 +34,28 @@ export default async function ProjectLayout({
   ]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 text-gray-900">
-      <header className="flex items-center justify-between border-b bg-white px-5 py-3">
+    <div className="bg-background text-foreground flex min-h-screen flex-col">
+      <header className="bg-background flex items-center justify-between border-b px-5 py-3">
         <div className="flex items-center gap-3">
-          <Link href="/projects" className="text-lg font-bold tracking-tight">Rankenstein</Link>
-          <span className="text-gray-300">/</span>
+          <Link href="/projects" className="text-base font-bold tracking-tight">Rankenstein</Link>
+          <span className="text-muted-foreground/40">/</span>
           <div>
-            <div className="text-sm font-semibold leading-tight">{project.name}</div>
-            <div className="text-xs text-gray-500 leading-tight">{project.siteUrl}</div>
+            <div className="text-sm leading-tight font-semibold">{project.name}</div>
+            <div className="text-muted-foreground text-xs leading-tight">{project.siteUrl}</div>
           </div>
-          <span className={`ml-1 rounded-full px-2 py-0.5 text-xs font-medium ${project.shopify ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"}`}>
+          <Badge variant={project.shopify ? "success" : "secondary"} className="ml-1">
             {project.shopify ? "● Shopify connected" : "○ not connected"}
-          </span>
+          </Badge>
         </div>
-        <div className="flex items-center gap-3 text-sm text-gray-500">
-          <span>{account.email}</span>
-          <form action={signOutAction}><button className="rounded border px-3 py-1 text-gray-600 hover:bg-gray-50">Sign out</button></form>
+        <div className="text-muted-foreground flex items-center gap-3 text-sm">
+          <span className="hidden sm:inline">{account.email}</span>
+          <form action={signOutAction}><Button variant="outline" size="sm">Sign out</Button></form>
         </div>
       </header>
 
       <div className="flex flex-1">
         <Sidebar projectId={id} counts={{ products, pending, published }} />
-        <main className="flex-1 overflow-x-hidden p-6">{children}</main>
+        <main className="bg-muted/30 flex-1 overflow-x-hidden p-6">{children}</main>
       </div>
     </div>
   );

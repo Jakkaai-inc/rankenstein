@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 
 import { signInAction } from "./actions";
 import { getAccount } from "@/lib/session";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const dynamic = "force-dynamic";
 
@@ -10,20 +14,26 @@ export default async function Home() {
   if (account) redirect("/projects");
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Rankenstein</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Autonomous, self-correcting content that publishes only after it proves itself. For site owners and agencies.
-        </p>
+    <main className="bg-muted/30 flex min-h-screen flex-col items-center justify-center gap-6 p-8">
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold tracking-tight">Rankenstein</h1>
+          <p className="text-muted-foreground mx-auto mt-2 max-w-sm text-sm">
+            Autonomous, self-correcting content that publishes only after it proves itself. For site owners and agencies.
+          </p>
+        </div>
+        <Card>
+          <CardHeader><CardTitle>Sign in</CardTitle></CardHeader>
+          <CardContent>
+            <form action={signInAction} className="space-y-3">
+              <div className="grid gap-1.5"><Label htmlFor="name">Name</Label><Input id="name" name="name" placeholder="Your name" /></div>
+              <div className="grid gap-1.5"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" placeholder="you@company.com" required /></div>
+              <Button type="submit" className="w-full">Continue</Button>
+              <p className="text-muted-foreground text-xs">No password for the demo. Email creates your account.</p>
+            </form>
+          </CardContent>
+        </Card>
       </div>
-      <form action={signInAction} className="space-y-3 rounded-xl border p-5">
-        <h2 className="font-semibold">Sign in</h2>
-        <input name="name" placeholder="Your name" className="w-full rounded border p-2" />
-        <input name="email" type="email" placeholder="you@company.com" className="w-full rounded border p-2" required />
-        <button className="w-full rounded bg-black px-4 py-2 text-white">Continue</button>
-        <p className="text-xs text-gray-400">No password for the demo. Email creates your account.</p>
-      </form>
     </main>
   );
 }

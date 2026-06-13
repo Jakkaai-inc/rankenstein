@@ -49,11 +49,11 @@ export default async function ProductsPage({ params }: { params: Promise<{ id: s
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Products</h1>
-          <p className="text-sm text-gray-500">{project.shopify ? `Synced from ${project.shopify.shopDomain}` : "Connect a store to sync products"} · click a row to compare original vs rewritten.</p>
+          <p className="text-muted-foreground text-sm">{project.shopify ? `Synced from ${project.shopify.shopDomain}` : "Connect a store to sync products"} · click a row to compare original vs rewritten.</p>
         </div>
       </div>
       {pages.length === 0 ? (
-        <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-400">
+        <div className="bg-card text-muted-foreground rounded-xl border p-8 text-center text-sm">
           No products synced yet. {project.shopify ? "Run a catalog sync." : "Connect your Shopify store in Settings."}
         </div>
       ) : (

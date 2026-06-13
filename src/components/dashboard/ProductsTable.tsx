@@ -2,15 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ExternalLink, Search } from "lucide-react";
 
 import { StatusBadge } from "./StatusBadge";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getOriginalProduct, type OriginalProduct } from "@/app/projects/[id]/products/actions";
 
 export interface ProductRow {
   handle: string;
   title: string;
   url: string;
-  // matched Rankenstein rewrite (if any)
   contentItemId: string | null;
   status: string | null;
   primaryKeyword: string | null;
@@ -46,57 +51,61 @@ export default function ProductsTable({ projectId, rows }: { projectId: string; 
   const open = rows.find((r) => r.handle === openHandle) ?? null;
 
   return (
-    <div className="relative">
+    <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="w-64 rounded-md border px-3 py-1.5 text-sm" />
-        <div className="flex gap-1">
+        <div className="relative">
+          <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="w-64 pl-8" />
+        </div>
+        <div className="flex flex-wrap gap-1">
           {FILTERS.map((f) => (
-            <button key={f.key} onClick={() => setFilter(f.key)} className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${filter === f.key ? "bg-gray-900 text-white" : "border bg-white text-gray-600 hover:bg-gray-100"}`}>
-              {f.label}
-            </button>
+            <Button key={f.key} size="sm" variant={filter === f.key ? "default" : "outline"} onClick={() => setFilter(f.key)}>{f.label}</Button>
           ))}
         </div>
-        <span className="ml-auto text-xs text-gray-400">{filtered.length} of {rows.length}</span>
+        <span className="text-muted-foreground ml-auto text-xs">{filtered.length} of {rows.length}</span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-4 py-2.5 font-medium">Product</th>
-              <th className="px-4 py-2.5 font-medium">Rewrite</th>
-              <th className="px-4 py-2.5 font-medium">Primary keyword</th>
-              <th className="px-4 py-2.5 font-medium">Updated</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
+      <div className="bg-card overflow-hidden rounded-xl border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Product</TableHead>
+              <TableHead>Rewrite</TableHead>
+              <TableHead>Primary keyword</TableHead>
+              <TableHead>Updated</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filtered.slice(0, 400).map((r) => (
-              <tr key={r.handle} onClick={() => setOpenHandle(r.handle)} className="cursor-pointer hover:bg-gray-50">
-                <td className="px-4 py-2.5">
+              <TableRow key={r.handle} onClick={() => setOpenHandle(r.handle)} className="cursor-pointer">
+                <TableCell>
                   <div className="font-medium">{r.title}</div>
-                  <div className="text-xs text-gray-400">{r.handle}</div>
-                </td>
-                <td className="px-4 py-2.5">{r.status ? <StatusBadge status={r.status} /> : <span className="text-xs text-gray-400">none</span>}</td>
-                <td className="px-4 py-2.5 text-gray-600">{r.primaryKeyword ?? "—"}</td>
-                <td className="px-4 py-2.5 text-xs text-gray-400">{r.updatedAt ? r.updatedAt.slice(0, 10) : "—"}</td>
-              </tr>
+                  <div className="text-muted-foreground text-xs">{r.handle}</div>
+                </TableCell>
+                <TableCell>{r.status ? <StatusBadge status={r.status} /> : <span className="text-muted-foreground text-xs">none</span>}</TableCell>
+                <TableCell className="text-muted-foreground">{r.primaryKeyword ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground text-xs">{r.updatedAt ? r.updatedAt.slice(0, 10) : "—"}</TableCell>
+              </TableRow>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">No products match.</td></tr>}
-          </tbody>
-        </table>
-        {filtered.length > 400 && <div className="border-t px-4 py-2 text-center text-xs text-gray-400">Showing first 400 — refine your search.</div>}
+            {filtered.length === 0 && <TableRow><TableCell colSpan={4} className="text-muted-foreground py-8 text-center">No products match.</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+        {filtered.length > 400 && <div className="text-muted-foreground border-t px-4 py-2 text-center text-xs">Showing first 400 — refine your search.</div>}
       </div>
 
-      {open && <Drawer projectId={projectId} row={open} onClose={() => setOpenHandle(null)} />}
+      <Sheet open={!!open} onOpenChange={(o) => !o && setOpenHandle(null)}>
+        <SheetContent className="overflow-y-auto sm:max-w-3xl">
+          {open && <Drawer projectId={projectId} row={open} />}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-function Drawer({ projectId, row, onClose }: { projectId: string; row: ProductRow; onClose: () => void }) {
+function Drawer({ projectId, row }: { projectId: string; row: ProductRow }) {
   const [orig, setOrig] = useState<OriginalProduct | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // lazy-load the live original from the store when the drawer opens
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -105,67 +114,59 @@ function Drawer({ projectId, row, onClose }: { projectId: string; row: ProductRo
   }, [projectId, row.handle]);
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/20" />
-      <aside className="relative z-50 h-full w-full max-w-3xl overflow-y-auto bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 flex items-start justify-between border-b bg-white px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold">{row.title}</h2>
-            <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
-              <span>{row.handle}</span>
-              {row.status && <StatusBadge status={row.status} />}
+    <>
+      <SheetHeader>
+        <SheetTitle className="pr-6 text-lg">{row.title}</SheetTitle>
+        <div className="text-muted-foreground flex items-center gap-2 text-xs">
+          <span>{row.handle}</span>
+          {row.status && <StatusBadge status={row.status} />}
+        </div>
+      </SheetHeader>
+      <div className="space-y-5 p-4">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" asChild><a href={row.url} target="_blank" rel="noreferrer">View product <ExternalLink className="size-3.5" /></a></Button>
+          {row.contentItemId && <Button size="sm" asChild><Link href={`/review/${row.contentItemId}`}>Open rewrite in review →</Link></Button>}
+        </div>
+
+        {row.contentItemId && (
+          <Field label="Keywords used">
+            <div className="flex flex-wrap gap-1.5">
+              {row.primaryKeyword && <Badge>{row.primaryKeyword}</Badge>}
+              {row.secondaryKeywords.map((k) => <Badge key={k} variant="secondary">{k}</Badge>)}
             </div>
-          </div>
-          <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100">✕</button>
+          </Field>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Original (live on store)">
+            {loading && <div className="text-muted-foreground text-sm">Loading from Shopify…</div>}
+            {orig && !orig.ok && <div className="text-destructive text-sm">{orig.error}</div>}
+            {orig && orig.ok && (
+              <div className="bg-muted/40 max-h-[55vh] overflow-y-auto rounded-lg border p-3 text-sm [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: orig.descriptionHtml || "<span>(empty)</span>" }} />
+            )}
+          </Field>
+          <Field label="Rewritten (Rankenstein)">
+            {row.rewrittenHtml ? (
+              <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm [&_h2]:mt-3 [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: row.rewrittenHtml }} />
+            ) : (
+              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">No rewrite yet. Generate a batch to create one.</div>
+            )}
+          </Field>
         </div>
 
-        <div className="space-y-5 p-5">
-          <div className="flex flex-wrap gap-2">
-            <a href={row.url} target="_blank" rel="noreferrer" className="rounded-md border px-3 py-1.5 text-sm text-blue-700">View product ↗</a>
-            {row.contentItemId && <Link href={`/review/${row.contentItemId}`} className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white">Open rewrite in review →</Link>}
-          </div>
-
-          {row.contentItemId && (
-            <Field label="Keywords used">
-              <div className="flex flex-wrap gap-1.5">
-                {row.primaryKeyword && <span className="rounded bg-gray-900 px-2 py-0.5 text-xs text-white">{row.primaryKeyword}</span>}
-                {row.secondaryKeywords.map((k) => <span key={k} className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">{k}</span>)}
-              </div>
-            </Field>
-          )}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Original (live on store)">
-              {loading && <div className="text-sm text-gray-400">Loading from Shopify…</div>}
-              {orig && !orig.ok && <div className="text-sm text-red-600">{orig.error}</div>}
-              {orig && orig.ok && (
-                <div className="prose-sm max-h-[55vh] overflow-y-auto rounded-lg border bg-gray-50 p-3 text-sm [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: orig.descriptionHtml || "<span class='text-gray-400'>(empty)</span>" }} />
-              )}
-            </Field>
-
-            <Field label="Rewritten (Rankenstein)">
-              {row.rewrittenHtml ? (
-                <div className="prose-sm max-h-[55vh] overflow-y-auto rounded-lg border border-green-200 bg-green-50/40 p-3 text-sm [&_h2]:mt-3 [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: row.rewrittenHtml }} />
-              ) : (
-                <div className="rounded-lg border border-dashed p-4 text-sm text-gray-400">No rewrite yet. Generate a batch to create one.</div>
-              )}
-            </Field>
-          </div>
-
-          <div className="text-xs text-gray-400">
-            {row.updatedAt ? `Rewrite updated ${row.updatedAt.slice(0, 16).replace("T", " ")}` : "No rewrite yet"}
-            {row.publishedUrl && <> · <a href={row.publishedUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline">published live ↗</a></>}
-          </div>
+        <div className="text-muted-foreground text-xs">
+          {row.updatedAt ? `Rewrite updated ${row.updatedAt.slice(0, 16).replace("T", " ")}` : "No rewrite yet"}
+          {row.publishedUrl && <> · <a href={row.publishedUrl} target="_blank" rel="noreferrer" className="text-primary underline">published live ↗</a></>}
         </div>
-      </aside>
-    </div>
+      </div>
+    </>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">{label}</div>
       {children}
     </div>
   );

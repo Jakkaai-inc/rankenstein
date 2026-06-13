@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, Package, FileText, Settings, ArrowLeft } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 
 interface Props {
   projectId: string;
@@ -12,35 +15,38 @@ export default function Sidebar({ projectId, counts }: Props) {
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
   const items = [
-    { href: base, label: "Overview", icon: "▦", exact: true },
-    { href: `${base}/products`, label: "Products", icon: "▤", badge: counts.products || undefined },
-    { href: `${base}/content`, label: "Content", icon: "✎", badge: counts.pending || undefined },
-    { href: `${base}/settings`, label: "Settings", icon: "⚙" },
+    { href: base, label: "Overview", Icon: LayoutDashboard, exact: true },
+    { href: `${base}/products`, label: "Products", Icon: Package, badge: counts.products || undefined },
+    { href: `${base}/content`, label: "Content", Icon: FileText, badge: counts.pending || undefined },
+    { href: `${base}/settings`, label: "Settings", Icon: Settings },
   ];
 
   return (
-    <nav className="flex w-52 shrink-0 flex-col gap-1 border-r bg-white p-3">
-      {items.map((it) => {
-        const active = it.exact ? pathname === it.href : pathname.startsWith(it.href);
+    <nav className="bg-sidebar text-sidebar-foreground flex w-56 shrink-0 flex-col gap-1 border-r p-3">
+      {items.map(({ href, label, Icon, exact, badge }) => {
+        const active = exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link
-            key={it.href}
-            href={it.href}
-            className={`flex items-center justify-between rounded-md px-3 py-2 text-sm ${
-              active ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-            }`}
+            key={href}
+            href={href}
+            className={cn(
+              "flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              active ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            )}
           >
-            <span className="flex items-center gap-2">
-              <span className="opacity-70">{it.icon}</span>
-              {it.label}
+            <span className="flex items-center gap-2.5">
+              <Icon className="size-4" />
+              {label}
             </span>
-            {it.badge != null && (
-              <span className={`rounded-full px-1.5 text-xs ${active ? "bg-white/20" : "bg-gray-200 text-gray-600"}`}>{it.badge}</span>
+            {badge != null && (
+              <span className={cn("rounded-full px-1.5 text-xs", active ? "bg-white/20" : "bg-muted text-muted-foreground")}>{badge}</span>
             )}
           </Link>
         );
       })}
-      <Link href="/projects" className="mt-2 px-3 py-2 text-xs text-gray-400 hover:text-gray-600">← all projects</Link>
+      <Link href="/projects" className="text-muted-foreground hover:text-foreground mt-2 flex items-center gap-2 px-3 py-2 text-xs">
+        <ArrowLeft className="size-3" /> All projects
+      </Link>
     </nav>
   );
 }

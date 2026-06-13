@@ -46,11 +46,12 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ pi
   const verdict = piece.verifierVerdict as unknown as VerifierVerdict | null;
 
   return (
-    <main className="mx-auto max-w-5xl space-y-4 p-6">
+    <main className="bg-muted/30 min-h-screen">
+     <div className="mx-auto max-w-5xl space-y-4 p-6">
       <header>
-        <Link href="/review" className="text-sm text-gray-500">← review queue</Link>
+        <Link href="/review" className="text-muted-foreground text-sm hover:underline">← review queue</Link>
         <h1 className="text-2xl font-bold">{piece.title ?? "Untitled"}</h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-muted-foreground text-sm">
           {piece.project.name} · {piece.kind === "PRODUCT_REWRITE" ? "product rewrite" : "article"}
           {piece.primaryKeyword ? ` · ${piece.primaryKeyword}` : ""}
         </p>
@@ -72,13 +73,13 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ pi
 
       {/* Grounding proof: the verifier verdict + guardrail flags that gated this piece. */}
       {(verdict || flags.length > 0) && (
-        <section className="rounded-lg border bg-gray-50 p-4 text-sm">
+        <section className="bg-card rounded-xl border p-4 text-sm">
           {verdict && (
             <p className="mb-2">
               <b>Verifier:</b>{" "}
-              <span className={verdict.verdict === "pass" ? "text-green-700" : "text-red-700"}>{verdict.verdict}</span>{" "}
-              <span className="text-gray-500">({verdict.isSelfCheck ? "self-check" : "independent"})</span>
-              {verdict.failures?.length ? <span className="text-red-700"> · {verdict.failures.join("; ")}</span> : ""}
+              <span className={verdict.verdict === "pass" ? "text-emerald-600" : "text-destructive"}>{verdict.verdict}</span>{" "}
+              <span className="text-muted-foreground">({verdict.isSelfCheck ? "self-check" : "independent"})</span>
+              {verdict.failures?.length ? <span className="text-destructive"> · {verdict.failures.join("; ")}</span> : ""}
             </p>
           )}
           {flags.map((f, i) => (
@@ -105,6 +106,7 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ pi
         addComment={addComment}
         readOnly={piece.status === "APPROVED" || piece.status === "PUBLISHED"}
       />
+     </div>
     </main>
   );
 }
