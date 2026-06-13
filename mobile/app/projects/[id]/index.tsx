@@ -1,7 +1,16 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { api } from "@/api/client";
 import type { ProjectDetail } from "@/api/types";
@@ -19,8 +28,10 @@ function GateStep({ n, title, done, current }: { n: number; title: string; done:
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -35,6 +46,26 @@ export default function ProjectDetailScreen() {
       setLoading(false);
     }
   }, [id]);
+
+  // Advance a server-side rewrite batch. Each call processes a small slice
+  // (the orchestrator skips already-done products), then we reload to show
+  // the updated done/flagged counts.
+  const onRun = useCallback(async () => {
+    if (!id) return;
+    setRunning(true);
+    try {
+      const res = await api.runProject(id, { limit: 2 });
+      await load();
+      Alert.alert(
+        res.stopped ? "Paused at spend limit" : "Batch complete",
+        `${res.done} done · ${res.flagged} flagged for review`,
+      );
+    } catch (e) {
+      Alert.alert("Run failed", e instanceof Error ? e.message : "unknown error");
+    } finally {
+      setRunning(false);
+    }
+  }, [id, load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -84,6 +115,11 @@ export default function ProjectDetailScreen() {
         {!gate.brandConfirmed ? (
           <Text style={styles.note}>Generation is locked until the brand profile is confirmed (the ask-first rule).</Text>
         ) : null}
+        <Pressable style={styles.cta} onPress={() => router.push(`/projects/${id}/brand`)}>
+          <Text style={styles.ctaText}>
+            {gate.brandConfirmed ? "Review brand guidelines" : "Review & confirm brand"}
+          </Text>
+        </Pressable>
       </View>
 
       {project.brand ? (
@@ -119,10 +155,21 @@ export default function ProjectDetailScreen() {
         ) : (
           project.runs.map((r) => (
             <Text key={r.id} style={styles.run}>
-              {r.status.toLowerCase()} · {r.done}/{r.total} done · {r.flagged} flagged ·{" "}
+              {r.status.toLowerCase()} · {r.done}/{r.total} done · {r.flagged} flagged · ${r.spendUsd.toFixed(2)} ·{" "}
               {r.createdAt.slice(0, 16).replace("T", " ")}
             </Text>
           ))
+        )}
+        {gate.brandConfirmed ? (
+          <Pressable
+            style={[styles.cta, running && styles.ctaDisabled]}
+            onPress={onRun}
+            disabled={running}
+          >
+            {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaText}>Run a batch</Text>}
+          </Pressable>
+        ) : (
+          <Text style={styles.note}>Confirm the brand to unlock runs.</Text>
         )}
       </View>
     </ScrollView>
@@ -149,4 +196,7 @@ const styles = StyleSheet.create({
   k: { fontWeight: "600" },
   run: { color: "#555", fontSize: 13, marginTop: 4 },
   error: { color: "#c0392b" },
+  cta: { backgroundColor: "#000", borderRadius: 8, padding: 14, alignItems: "center", marginTop: 12 },
+  ctaDisabled: { opacity: 0.6 },
+  ctaText: { color: "#fff", fontWeight: "700" },
 });

@@ -5,10 +5,12 @@
 import { API_BASE } from "./config";
 import type {
   Account,
+  BrandPublic,
   ConfirmBrandInput,
-  LoginResponse,
   ProjectDetail,
   ProjectListItem,
+  LoginResponse,
+  RunResult,
 } from "./types";
 
 export class ApiError extends Error {
@@ -72,9 +74,19 @@ export const api = {
 
   getProject: (id: string) => request<{ project: ProjectDetail }>(`/api/v1/projects/${id}`),
 
+  // Crawls the site and drafts brand guidelines. Refuse-and-flag: an unreadable
+  // site comes back as a name-only stub (never an invented brand) — the user
+  // fills in the rest. The response carries extra server fields we ignore.
   draftBrand: (id: string) =>
-    request<{ brand: unknown }>(`/api/v1/projects/${id}/brand/draft`, { method: "POST" }),
+    request<{ brand: BrandPublic }>(`/api/v1/projects/${id}/brand/draft`, { method: "POST" }),
 
+  // The ask-first gate: confirming unlocks generation. seedTopics is required
+  // (the server 400s otherwise); nothing is confirmed without an explicit tap.
   confirmBrand: (id: string, input: ConfirmBrandInput) =>
-    request<{ brand: unknown }>(`/api/v1/projects/${id}/brand/confirm`, { method: "POST", body: input }),
+    request<{ brand: BrandPublic }>(`/api/v1/projects/${id}/brand/confirm`, { method: "POST", body: input }),
+
+  // Advances a catalog-rewrite run server-side. Call repeatedly; the orchestrator
+  // skips already-processed products, so each call moves done/total forward.
+  runProject: (id: string, input: { limit?: number; runId?: string } = {}) =>
+    request<RunResult>(`/api/v1/projects/${id}/run`, { method: "POST", body: input }),
 };

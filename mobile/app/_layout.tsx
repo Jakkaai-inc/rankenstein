@@ -30,7 +30,8 @@ export default function RootLayout() {
     <Stack screenOptions={{ headerStyle: { backgroundColor: "#fff" }, headerTitleStyle: { fontWeight: "700" } }}>
       <Stack.Screen name="index" options={{ title: "Rankenstein", headerShown: false }} />
       <Stack.Screen name="projects/index" options={{ title: "Projects" }} />
-      <Stack.Screen name="projects/[id]" options={{ title: "Project" }} />
+      <Stack.Screen name="projects/[id]/index" options={{ title: "Project" }} />
+      <Stack.Screen name="projects/[id]/brand" options={{ title: "Brand" }} />
     </Stack>
   );
 }

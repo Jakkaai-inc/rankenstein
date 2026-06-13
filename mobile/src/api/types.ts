@@ -57,6 +57,14 @@ export interface ProjectDetail {
   createdAt: string;
 }
 
+// POST /api/v1/projects/:id/run — one server-side batch. Call again to advance.
+export interface RunResult {
+  runId: string;
+  done: number;
+  flagged: number;
+  stopped: boolean; // true when the spend soft-stop paused the run
+}
+
 export interface LoginResponse {
   token: string;
   expiresAt: string;
