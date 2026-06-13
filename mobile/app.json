@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Rankenstein",
+    "slug": "rankenstein",
+    "scheme": "rankenstein",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.rankenstein.mobile"
+    },
+    "android": {
+      "package": "app.rankenstein.mobile"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "extra": {
+      "apiBase": "https://rankenstein.app"
+    }
+  }
+}

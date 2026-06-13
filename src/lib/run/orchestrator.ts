@@ -22,6 +22,7 @@ type DbBrand = {
   vendorName?: string | null;
   voice: string | null;
   voiceHardRules: unknown;
+  seedTopics: string[];
   confirmed: boolean;
 };
 
@@ -41,7 +42,9 @@ export function toEngineBrand(db: DbBrand, primaryDomain: string): BrandProfile 
       descriptiveUseTolerated: t.descriptiveUseTolerated ?? false,
     })),
     bannedWords: rules.bannedWords ?? [],
-    seedTerms: [],
+    // CRITICAL: the confirmed brand's seed topics drive research. Empty seeds
+    // make the research provider hallucinate generic keywords (earbuds, shoes).
+    seedTerms: db.seedTopics ?? [],
     voiceNote: db.voice ?? "One honest peer among competitors. Specificity persuades; never hard-sell.",
   };
 }
@@ -126,7 +129,12 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
     }
 
     try {
-      const res = await runProductRewrite({ product, brand, catalogIndex, runConfig: rc, deps });
+      // Product-aware seeds: the product's own name/type + a few brand seeds, so
+      // research targets THIS product, not the same brand-level terms every time.
+      const pp = product as { title?: string; productType?: string };
+      const seedTerms = [pp.title, pp.productType, ...brand.seedTerms.slice(0, 3)]
+        .filter((s): s is string => !!s && s.length > 2);
+      const res = await runProductRewrite({ product, brand, catalogIndex, runConfig: rc, deps, seedTerms });
       spend += EST_USD_PER_PIECE;
       const r = res.result;
       const isFlagged = res.haltReason != null || r.status === "flagged";

@@ -1,30 +1,22 @@
-// Login-lite session: a signed cookie holding a Session token. Deliberately a
-// thin seam — when Rankenstein migrates into Jakka, swap this for Jakka's auth.
+// Web session: a signed httpOnly cookie wrapping the same Session token the
+// mobile/API layer hands out as a bearer. The core (issue/resolve/revoke) lives
+// in services/auth.ts so web and API share one source of truth. When Rankenstein
+// migrates into Jakka, swap this cookie seam for Jakka's auth.
 
 import { cookies } from "next/headers";
-import { randomBytes } from "crypto";
 
-import { prisma } from "./db";
+import { issueSession, resolveSession, revokeSession, SESSION_TTL_MS } from "./services/auth";
 
 const COOKIE = "rk_session";
-const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
 export async function signIn(email: string, name?: string) {
-  const account = await prisma.account.upsert({
-    where: { email },
-    create: { email, name },
-    update: name ? { name } : {},
-  });
-  const token = randomBytes(24).toString("hex");
-  await prisma.session.create({
-    data: { accountId: account.id, token, expiresAt: new Date(Date.now() + THIRTY_DAYS) },
-  });
+  const { account, token } = await issueSession(email, name);
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: THIRTY_DAYS / 1000,
+    maxAge: SESSION_TTL_MS / 1000,
     path: "/",
   });
   return account;
@@ -32,21 +24,13 @@ export async function signIn(email: string, name?: string) {
 
 export async function signOut() {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (token) await prisma.session.deleteMany({ where: { token } });
+  await revokeSession(jar.get(COOKIE)?.value);
   jar.delete(COOKIE);
 }
 
 export async function getAccount() {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
-  if (!token) return null;
-  const session = await prisma.session.findUnique({
-    where: { token },
-    include: { account: true },
-  });
-  if (!session || session.expiresAt < new Date()) return null;
-  return session.account;
+  return resolveSession(jar.get(COOKIE)?.value);
 }
 
 export async function requireAccount() {

@@ -3,9 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { draftBrandFromSite } from "@/lib/brand";
-import { prisma } from "@/lib/db";
 import { getAccount, requireAccount, signIn, signOut } from "@/lib/session";
+import { confirmBrand, draftBrandForProject } from "@/lib/services/brand";
+import { createProject as createProjectSvc } from "@/lib/services/projects";
+
+// Server actions are thin FormData adapters over the shared service layer
+// (src/lib/services/*). The same services back the /api/v1 routes the mobile
+// app calls, so web and mobile never drift.
 
 export async function signInAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -22,67 +26,31 @@ export async function signOutAction() {
 
 export async function createProject(formData: FormData) {
   const account = await requireAccount();
-  const name = String(formData.get("name") ?? "").trim();
-  const rawUrl = String(formData.get("siteUrl") ?? "").trim();
-  if (!name || !rawUrl) throw new Error("name and site URL required");
-  const siteUrl = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
-
-  const project = await prisma.project.create({
-    data: { accountId: account.id, name, siteUrl },
-  });
-  // Kick off the crawl → brand-draft flow (Lane A task 17 handler).
-  await prisma.run.create({
-    data: { projectId: project.id, status: "QUEUED", log: [{ at: new Date().toISOString(), phase: "queued", message: "crawl + brand draft" }] },
+  const project = await createProjectSvc(account.id, {
+    name: String(formData.get("name") ?? ""),
+    siteUrl: String(formData.get("siteUrl") ?? ""),
   });
   redirect(`/projects/${project.id}`);
 }
 
 export async function draftBrand(formData: FormData) {
-  await requireAccount();
+  const account = await requireAccount();
   const projectId = String(formData.get("projectId"));
-  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
-  const { ok, draft } = await draftBrandFromSite(project.siteUrl);
-  const data = ok
-    ? {
-        brandName: draft.brandName!,
-        industry: draft.industry ?? null,
-        audience: draft.audience ?? null,
-        voice: draft.voice ?? null,
-        brandFacts: draft.brandFacts ?? null,
-        seedTopics: draft.seedTopics ?? [],
-        competitors: draft.competitors ?? [],
-      }
-    : { brandName: project.name }; // refuse-and-flag: stub for manual entry, no invention
-  await prisma.brandProfile.upsert({
-    where: { projectId },
-    create: { projectId, ...data },
-    update: data,
-  });
+  await draftBrandForProject(account.id, projectId);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function confirmBrandProfile(formData: FormData) {
-  await requireAccount();
+  const account = await requireAccount();
   const projectId = String(formData.get("projectId"));
-  const seedTopics = String(formData.get("seedTopics") ?? "")
-    .split(",").map((s) => s.trim()).filter(Boolean);
-  if (seedTopics.length === 0) throw new Error("add at least one seed topic — research starts from these");
-
-  const data = {
-    brandName: String(formData.get("brandName") ?? "").trim() || "Unnamed brand",
-    industry: String(formData.get("industry") ?? "").trim() || null,
+  await confirmBrand(account.id, projectId, {
+    brandName: String(formData.get("brandName") ?? ""),
+    industry: String(formData.get("industry") ?? ""),
     audience: String(formData.get("audience") ?? ""),
     voice: String(formData.get("voice") ?? ""),
     brandFacts: String(formData.get("brandFacts") ?? ""),
-    seedTopics,
-    competitors: String(formData.get("competitors") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    confirmed: true,
-    confirmedAt: new Date(),
-  };
-  await prisma.brandProfile.upsert({
-    where: { projectId },
-    create: { projectId, ...data },
-    update: data,
+    seedTopics: String(formData.get("seedTopics") ?? "").split(","),
+    competitors: String(formData.get("competitors") ?? "").split(","),
   });
   revalidatePath(`/projects/${projectId}`);
 }
