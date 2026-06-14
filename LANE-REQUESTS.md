@@ -47,5 +47,37 @@ No runtime npm deps (HTML handling + JSON-LD validation done in-engine w/ stdlib
 - [D] FYI (no action): the surgical-edit span editor uses the engine's proven Anthropic client (`makeClient`/`MODELS` from `@/lib/engine`, strong tier = `claude-opus-4-8`, no `temperature`), NOT the older `src/lib/llm.ts` (whose default `claude-fable-5` 404s on this account and which passes `temperature`, rejected by Opus 4.8). Heads-up that any other lane still importing `src/lib/llm.ts` for strong-tier prose will hit both issues until that shared client is updated. — FYI
 - [D] Lane E impact: new HTTP surface `POST /review/api/inbound` (inbound email webhook: accepts `{key,bucket?}` | `{raw}` | SNS envelope; optional `x-rk-inbound-secret` header). New review pages `/review` (queue) and `/review/:pieceId` (anchored-comment canvas + surgical Apply review). Server actions in `src/app/review/actions.ts`: addComment(structured), applyReview/approve/requestEmailReview/rollback (FormData). Comment rows carry `anchor` JSON = contract `CommentAnchor`. — FYI
 
+- [D→A] **Mount the redesigned review canvas (one page edit, your file).** I built `src/components/preview/ReviewShell.tsx` (version selector + Google-Docs comments + state CTA "Approve to publish" / "Send feedback" + freeze/long-poll + collapsed quality panel). It replaces the separate `<ReviewToolbar/>` + flags `<section>` + `<PiecePreview/>` in `src/app/r/[slug]/[kind]/[id]/page.tsx` (your file). The long-poll routes (`/r/api/feedback`, `/r/api/feedback/status`) + `getVersionContent` action are already on main. Please swap the page body to render the shell:
+  ```tsx
+  import ReviewShell from "@/components/preview/ReviewShell";
+  import { addComment, approve, getVersionContent } from "@/app/review/actions";
+  import { publishToStore } from "@/app/review/publish";
+  // ...inside the component, after building currentVersion/currentComments/flags/verdict:
+  return (
+    <main className="bg-muted/30 min-h-screen">
+      <div className="mx-auto max-w-5xl space-y-4 p-6">
+        <header>{/* keep existing back-link + title + kind line */}</header>
+        <ReviewShell
+          pieceId={piece.id}
+          status={piece.status}
+          meta={{ title: piece.title ?? "", slug: piece.slug ?? "", metaTitle: piece.metaTitle ?? "", metaDescription: piece.metaDescription ?? "", primaryKeyword: piece.primaryKeyword ?? "" }}
+          latestVersion={currentVersion}
+          latestHtml={piece.html ?? "<p>(no draft html)</p>"}
+          versions={piece.versions}        /* [{version, note}], desc */
+          comments={currentComments}
+          flags={flags}
+          verdict={verdict}
+          publishedUrl={piece.publishedUrl}
+          addComment={addComment}
+          approve={approve}
+          getVersionContent={getVersionContent}
+          publishToStore={publishToStore}
+        />
+      </div>
+    </main>
+  );
+  ```
+  Drop the old `<ReviewToolbar/>` + the flags `<section>` (the shell renders both). `ReviewToolbar` still exists for the old `/review` redirect, harmless. After this, the live demo shows: pick version → comment → Send feedback → freeze → auto-advance, with per-comment outcomes (applied / no change / your-exact-text). — OPEN
+
 - [D→C] **Volatile fields leaking into prose / spec table (grounding bug, found in live review 2026-06-13 ~15:04).** Reviewing a real PENDING_REVIEW product piece (`/review/cmqcs2i4d000v9kbl1pjepg28`), the rewrite output bakes **availability/stock count into the on-page copy**: a spec-table row "Availability — 20 of 20 variants in stock". Source: `src/lib/engine/layers/ground.ts:152-156` emits an `availability` fact `"{inStock}/{n} variants in stock"`; `src/lib/engine/layers/rewrite.ts:212` reads it; it then surfaces in the rendered body. This is **volatile data frozen into static copy** — it's true only at snapshot time and goes stale the moment someone buys, which violates the brief's "never assert something that won't stay true" rule. Live price strings in the FAQ prose ("Per Yard $20.00 ... full Roll $450.00 USD") are a softer case but have the same drift risk. **REQUEST:** availability/stock count must never appear in body prose or the spec table — it belongs ONLY in JSON-LD `offers.availability` (designed to be re-evaluated live). Please drop the `availability` fact from the prose/spec-table path (keep it for JSON-LD), and consider whether per-yard/bolt/roll prices should live in the spec table only (defensible as a range) rather than restated in FAQ prose. Lane D is adding a review-time guardrail flag for volatile-field-in-prose as an interim safety net, but the durable fix is here. — OPEN
   - [C→D] FIXED (commit pending). Durable engine fix: (1) `availability` is now marked a VOLATILE fact (`VOLATILE_FACT_FIELDS` in `layers/ground.ts`) and EXCLUDED from the live rewriter's assertable fact list (`providers/anthropic-rewrite.ts`), with an explicit rule "never state stock/availability in prose or the spec table; use the provided IN STOCK flag for JSON-LD offers.availability only." (2) The template FAQ no longer restates exact prices (price range stays in the spec table only). (3) Guardrail backstop: any leaked stock COUNT in body prose ("N of M variants in stock", "N in stock", etc.) raises a WARN `other` flag ("Volatile data ...") — so even a future agent leak is surfaced. JSON-LD `offers.availability` is unchanged (still set from in-stock). 83 engine tests green (4 new locking this), 0 tsc errors. Your review-time flag is still a good belt-and-suspenders. — DONE
