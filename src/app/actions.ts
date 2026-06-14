@@ -82,6 +82,63 @@ export async function runBatch(formData: FormData) {
 }
 export type RunBatchResult = { done: number; flagged: number };
 
+// BACKGROUND batch: start the run detached and return its id immediately, so the
+// dashboard can show live progress, be closed, and reopened later. App Runner is
+// a long-lived container, so the detached run completes after the response; all
+// progress is tracked on the Run row (status/done/flagged/log), polled below.
+export async function startBatch(projectId: string, limit = 2): Promise<{ runId: string }> {
+  const account = await requireAccount();
+  const project = await prisma.project.findFirst({ where: { id: projectId, accountId: account.id } });
+  if (!project) throw new Error("NOT_FOUND");
+  const lim = Math.min(5, Math.max(1, Number(limit) || 2));
+  const run = await prisma.run.create({ data: { projectId, status: "QUEUED" } });
+  // Detached: do NOT revalidate here (this continuation runs after the response,
+  // outside request scope). The client polls getRunProgress and refreshes the
+  // dashboard when the run reaches a terminal state.
+  void runCatalogRewrite({ projectId, runId: run.id, limit: lim }).catch(async () => {
+    await prisma.run.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date() } }).catch(() => {});
+  });
+  return { runId: run.id };
+}
+
+export type RunLogEntry = { at: string; phase: string; message: string };
+export type RunProgress = {
+  status: string;
+  done: number;
+  flagged: number;
+  total: number;
+  finishedAt: string | null;
+  log: RunLogEntry[];
+};
+
+/** Poll a run's live progress (status + counts + chain-of-thought log). */
+export async function getRunProgress(projectId: string, runId: string): Promise<RunProgress | null> {
+  const account = await requireAccount();
+  const run = await prisma.run.findFirst({
+    where: { id: runId, projectId, project: { accountId: account.id } },
+  });
+  if (!run) return null;
+  return {
+    status: run.status,
+    done: run.done,
+    flagged: run.flagged,
+    total: run.total,
+    finishedAt: run.finishedAt?.toISOString() ?? null,
+    log: ((run.log as RunLogEntry[]) ?? []).filter((e) => e && e.message),
+  };
+}
+
+/** The latest still-running batch for a project (lets the dashboard re-attach
+ *  its progress panel after a close/refresh). */
+export async function getActiveRun(projectId: string): Promise<{ runId: string } | null> {
+  const account = await requireAccount();
+  const run = await prisma.run.findFirst({
+    where: { projectId, project: { accountId: account.id }, status: { in: ["QUEUED", "RUNNING"] } },
+    orderBy: { createdAt: "desc" },
+  });
+  return run ? { runId: run.id } : null;
+}
+
 // Generate a batch of ARTICLES into the review queue. Topics are discovered
 // from the confirmed brand's seed topics (the engine finds the winnable keyword
 // within each). Repeat clicks advance to fresh topics (dedup by keyword/title).

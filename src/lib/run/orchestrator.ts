@@ -118,6 +118,7 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
     where: { id: opts.runId },
     data: { status: "RUNNING", total: prioritized.length, startedAt: new Date() },
   });
+  await appendRunLog(opts.runId, "start", `Starting batch over ${prioritized.length} product(s). Each runs the full engine: research, SERP ownership, grounding, rewrite, AEO, guardrails, then an independent verifier.`);
 
   let done = 0;
   let flagged = 0;
@@ -131,12 +132,14 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
       return { done, flagged, stopped: true };
     }
 
+    const pp = product as { title?: string; productType?: string };
+    const title = pp.title ?? "product";
     try {
       // Product-aware seeds: the product's own name/type + a few brand seeds, so
       // research targets THIS product, not the same brand-level terms every time.
-      const pp = product as { title?: string; productType?: string };
       const seedTerms = [pp.title, pp.productType, ...brand.seedTerms.slice(0, 3)]
         .filter((s): s is string => !!s && s.length > 2);
+      await appendRunLog(opts.runId, "piece", `Researching and rewriting: ${title}`);
       const res = await runProductRewrite({ product, brand, catalogIndex, runConfig: rc, deps, seedTerms });
       spend += EST_USD_PER_PIECE;
       const r = res.result;
@@ -149,12 +152,20 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
         where: { id: opts.runId },
         data: { done, flagged, spendUsd: spend },
       });
+      await appendRunLog(
+        opts.runId,
+        "piece",
+        isFlagged
+          ? `${title}: flagged for review (verifier ${r.verdict?.verdict ?? "fail"}) - held back from the queue`
+          : `${title}: ready for review (verifier ${r.verdict?.verdict ?? "pass"}${r.primaryKeyword ? `, primary "${r.primaryKeyword}"` : ""})`,
+      );
     } catch (e) {
       flagged++;
       await appendRunLog(opts.runId, "error", `${(product as { title?: string }).title ?? "product"}: ${e instanceof Error ? e.message : e}`);
     }
   }
 
+  await appendRunLog(opts.runId, "done", `Finished: ${done} ready for review, ${flagged} flagged.`);
   await prisma.run.update({
     where: { id: opts.runId },
     data: { status: "SUCCEEDED", done, flagged, spendUsd: spend, finishedAt: new Date() },
