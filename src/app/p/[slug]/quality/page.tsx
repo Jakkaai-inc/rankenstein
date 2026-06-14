@@ -8,7 +8,8 @@ import { toChecklistConfig } from "@/lib/run/config";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import QualificationChecklist from "@/components/quality/QualificationChecklist";
 import RunConfigForm from "@/components/quality/RunConfigForm";
-import { saveRunConfig } from "./actions";
+import ScheduleForm from "@/components/quality/ScheduleForm";
+import { saveRunConfig, saveSchedule } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,10 @@ export default async function QualityPage({ params }: { params: Promise<{ slug: 
   const resolved = await findProjectBySlug(account.id, slug);
   if (!resolved) notFound();
 
-  const [runConfig, brandProfile] = await Promise.all([
+  const [runConfig, brandProfile, lastRun] = await Promise.all([
     prisma.runConfig.findFirst({ where: { projectId: resolved.id, name: "Default" } }),
     prisma.brandProfile.findUnique({ where: { projectId: resolved.id } }),
+    prisma.run.findFirst({ where: { projectId: resolved.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
   ]);
 
   const config = toChecklistConfig(runConfig);
@@ -54,6 +56,23 @@ export default async function QualityPage({ params }: { params: Promise<{ slug: 
         </CardHeader>
         <CardContent>
           <RunConfigForm config={config} action={saveRunConfig.bind(null, resolved.id)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Schedule</CardTitle>
+          <CardDescription>
+            Run this configuration on a recurring cadence. Each firing enqueues a batch just like an on-demand run; an
+            already-running or already-fired period is skipped (no double runs).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScheduleForm
+            action={saveSchedule.bind(null, resolved.id)}
+            currentCron={runConfig?.scheduleCron ?? null}
+            lastRunAt={lastRun?.createdAt.toISOString() ?? null}
+          />
         </CardContent>
       </Card>
 

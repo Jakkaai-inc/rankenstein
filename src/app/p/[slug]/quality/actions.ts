@@ -6,6 +6,7 @@ import { requireAccount } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { deriveSlug } from "@/lib/slug";
 import { RUN_CONFIG_DEFAULTS } from "@/lib/run/config";
+import { presetToCron, validateCron, type CronCadence } from "@/lib/run/cron";
 
 function oneOf<T extends string>(fd: FormData, key: string, allowed: readonly T[], fallback: T): T {
   const v = String(fd.get(key) ?? "");
@@ -63,6 +64,52 @@ export async function saveRunConfig(projectId: string, formData: FormData) {
     await prisma.runConfig.update({ where: { id: existing.id }, data });
   } else {
     await prisma.runConfig.create({ data: { ...data, name: "Default", projectId: project.id } });
+  }
+
+  revalidatePath(`/p/${deriveSlug(project)}/quality`);
+}
+
+// Persist the recurring-run schedule (RunConfig.scheduleCron). Separate from
+// saveRunConfig so each upsert only touches its own fields and they never
+// clobber each other. A cadence preset maps to a cron; "custom" takes a raw,
+// validated expression; "off" clears the schedule.
+export async function saveSchedule(projectId: string, formData: FormData) {
+  const account = await requireAccount();
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, accountId: account.id },
+    include: { shopify: { select: { shopDomain: true } } },
+  });
+  if (!project) throw new Error("project not found");
+
+  const cadence = oneOf(
+    formData,
+    "cadence",
+    ["off", "daily", "weekly", "monthly", "custom"] as const,
+    "off",
+  ) as CronCadence;
+
+  let scheduleCron: string | null;
+  if (cadence === "custom") {
+    const raw = String(formData.get("customCron") ?? "").trim();
+    if (!raw) {
+      scheduleCron = null;
+    } else {
+      const v = validateCron(raw);
+      if (!v.ok) throw new Error(`Invalid cron expression: ${v.error}`);
+      scheduleCron = raw;
+    }
+  } else {
+    scheduleCron = presetToCron(cadence);
+  }
+
+  const existing = await prisma.runConfig.findFirst({
+    where: { projectId: project.id, name: "Default" },
+    select: { id: true },
+  });
+  if (existing) {
+    await prisma.runConfig.update({ where: { id: existing.id }, data: { scheduleCron } });
+  } else {
+    await prisma.runConfig.create({ data: { name: "Default", projectId: project.id, scheduleCron } });
   }
 
   revalidatePath(`/p/${deriveSlug(project)}/quality`);
