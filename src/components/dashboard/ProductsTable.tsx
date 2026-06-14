@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Search } from "lucide-react";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ExternalLink, Search, Sparkles, Loader2, AlertTriangle } from "lucide-react";
 
 import { StatusBadge } from "./StatusBadge";
 import { TablePager } from "./TablePager";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getOriginalProduct, type OriginalProduct } from "@/app/projects/[id]/products/actions";
+import { generateProductRewrite, type GenProductResult } from "@/app/actions";
 
 export interface ProductRow {
   handle: string;
@@ -113,8 +115,18 @@ export default function ProductsTable({ slug, projectId, rows }: { slug: string;
 }
 
 function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row: ProductRow }) {
+  const router = useRouter();
   const [orig, setOrig] = useState<OriginalProduct | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [gen, dispatchGen, generating] = useActionState<GenProductResult | null, FormData>(
+    async (_prev, fd) => {
+      const r = await generateProductRewrite(fd);
+      router.refresh(); // pull the new rewrite into the row behind the drawer
+      return r;
+    },
+    null,
+  );
 
   useEffect(() => {
     let alive = true;
@@ -148,18 +160,32 @@ function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Original (live on store)">
+          <Field label="Before · live on store">
             {loading && <div className="text-muted-foreground text-sm">Loading from Shopify…</div>}
             {orig && !orig.ok && <div className="text-destructive text-sm">{orig.error}</div>}
             {orig && orig.ok && (
               <div className="bg-muted/40 max-h-[55vh] overflow-y-auto rounded-lg border p-3 text-sm [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: orig.descriptionHtml || "<span>(empty)</span>" }} />
             )}
           </Field>
-          <Field label="Rewritten (Rankenstein)">
+          <Field label="After · Rankenstein rewrite">
             {row.rewrittenHtml ? (
               <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm [&_h2]:mt-3 [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: row.rewrittenHtml }} />
             ) : (
-              <div className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">No rewrite yet. Generate a batch to create one.</div>
+              <div className="space-y-3 rounded-lg border border-dashed p-4 text-sm">
+                <p className="text-muted-foreground">No rewrite yet.</p>
+                <form action={dispatchGen}>
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <input type="hidden" name="handle" value={row.handle} />
+                  <Button size="sm" type="submit" disabled={generating}>
+                    {generating ? <><Loader2 className="size-3.5 animate-spin" /> Generating… ~1 min</> : <><Sparkles className="size-3.5" /> Generate rewrite</>}
+                  </Button>
+                </form>
+                {generating && <p className="text-muted-foreground text-xs">Running the engine for this product (research → ground → rewrite → verify).</p>}
+                {gen?.error && <p className="text-destructive flex items-center gap-1 text-xs"><AlertTriangle className="size-3.5" /> {gen.error}</p>}
+                {gen && !gen.error && gen.done === 0 && gen.flagged > 0 && (
+                  <p className="flex items-center gap-1 text-xs text-amber-600"><AlertTriangle className="size-3.5" /> The verifier flagged this rewrite (ungrounded claims) — held out of review.</p>
+                )}
+              </div>
             )}
           </Field>
         </div>

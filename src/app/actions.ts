@@ -224,6 +224,38 @@ export async function removePlannedArticle(formData: FormData) {
   revalidatePath(`/p/${await projectSlug(item.projectId)}`, "layout");
 }
 
+// Generate a rewrite for ONE specific product (from the Products tab). Fetches that
+// product's public JSON (same shape the engine grounds against) and runs the engine
+// for it only. Clears a prior FAILED/DRAFTING attempt so retry works.
+export type GenProductResult = { done: number; flagged: number; error?: string };
+export async function generateProductRewrite(formData: FormData): Promise<GenProductResult> {
+  const account = await requireAccount();
+  const projectId = String(formData.get("projectId"));
+  const handle = String(formData.get("handle"));
+  const project = await prisma.project.findFirst({ where: { id: projectId, accountId: account.id } });
+  if (!project) throw new Error("NOT_FOUND");
+
+  await prisma.contentItem.deleteMany({
+    where: { projectId, kind: "PRODUCT_REWRITE", sourceRef: handle, status: { in: ["FAILED", "DRAFTING"] } },
+  });
+
+  const base = project.siteUrl.replace(/\/$/, "");
+  let product: unknown;
+  try {
+    const res = await fetch(`${base}/products/${handle}.json`, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return { done: 0, flagged: 0, error: `could not fetch product (${res.status})` };
+    product = (await res.json()).product;
+  } catch (e) {
+    return { done: 0, flagged: 0, error: e instanceof Error ? e.message : "fetch failed" };
+  }
+  if (!product) return { done: 0, flagged: 0, error: "product not found on the storefront" };
+
+  const run = await prisma.run.create({ data: { projectId, status: "QUEUED" } });
+  const r = await runCatalogRewrite({ projectId, runId: run.id, rawProducts: [product], limit: 1 });
+  revalidatePath(`/p/${await projectSlug(projectId)}`, "layout");
+  return { done: r.done, flagged: r.flagged };
+}
+
 export async function ensureAccountForDev() {
   // convenience for local: nothing if already signed in
   return getAccount();
