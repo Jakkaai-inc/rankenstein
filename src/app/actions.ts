@@ -313,6 +313,37 @@ export async function generateProductRewrite(formData: FormData): Promise<GenPro
   return { done: r.done, flagged: r.flagged };
 }
 
+// BACKGROUND single-product rewrite: same as above but detached, returning the runId
+// immediately so the drawer can poll getRunProgress() and show the live chain-of-thought.
+export async function startProductRewrite(projectId: string, handle: string): Promise<{ runId?: string; error?: string }> {
+  const account = await requireAccount();
+  const project = await prisma.project.findFirst({ where: { id: projectId, accountId: account.id }, include: { shopify: { select: { shopDomain: true } } } });
+  if (!project) throw new Error("NOT_FOUND");
+
+  await prisma.contentItem.deleteMany({
+    where: { projectId, kind: "PRODUCT_REWRITE", sourceRef: handle, status: { in: ["FAILED", "DRAFTING"] } },
+  });
+
+  const base = project.siteUrl.replace(/\/$/, "");
+  let product: unknown;
+  try {
+    const res = await fetch(`${base}/products/${handle}.json`, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return { error: `could not fetch product (${res.status})` };
+    product = (await res.json()).product;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "fetch failed" };
+  }
+  if (!product) return { error: "product not found on the storefront" };
+
+  const run = await prisma.run.create({ data: { projectId, status: "QUEUED" } });
+  void runCatalogRewrite({ projectId, runId: run.id, rawProducts: [product], limit: 1 })
+    .then(() => revalidatePath(`/p/${deriveSlug(project)}`, "layout"))
+    .catch(async () => {
+      await prisma.run.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date() } }).catch(() => {});
+    });
+  return { runId: run.id };
+}
+
 export async function ensureAccountForDev() {
   // convenience for local: nothing if already signed in
   return getAccount();

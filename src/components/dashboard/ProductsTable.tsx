@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Search, Sparkles, Loader2, AlertTriangle } from "lucide-react";
+import { ExternalLink, Search, Sparkles, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { StatusBadge } from "./StatusBadge";
 import { TablePager } from "./TablePager";
@@ -14,7 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getOriginalProduct, type OriginalProduct } from "@/app/projects/[id]/products/actions";
-import { generateProductRewrite, type GenProductResult } from "@/app/actions";
+import { startProductRewrite, getRunProgress, type RunProgress } from "@/app/actions";
+
+const TERMINAL = new Set(["SUCCEEDED", "PAUSED", "FAILED"]);
 
 export interface ProductRow {
   handle: string;
@@ -131,14 +133,43 @@ function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row
   const [orig, setOrig] = useState<OriginalProduct | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [gen, dispatchGen, generating] = useActionState<GenProductResult | null, FormData>(
-    async (_prev, fd) => {
-      const r = await generateProductRewrite(fd);
-      router.refresh(); // pull the new rewrite into the row behind the drawer
-      return r;
-    },
-    null,
-  );
+  // background per-product run + live chain-of-thought progress
+  const [runId, setRunId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [progress, setProgress] = useState<RunProgress | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshed = useRef(false);
+
+  const running = starting || (!!progress && !TERMINAL.has(progress.status)) || (!!runId && !progress);
+
+  const stopPoll = useCallback(() => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }, []);
+
+  useEffect(() => {
+    if (!runId) return;
+    let alive = true;
+    const tick = async () => {
+      const p = await getRunProgress(projectId, runId).catch(() => null);
+      if (!alive || !p) return;
+      setProgress(p);
+      if (TERMINAL.has(p.status)) { stopPoll(); if (!refreshed.current) { refreshed.current = true; router.refresh(); } }
+    };
+    tick();
+    pollRef.current = setInterval(tick, 2500);
+    return () => { alive = false; stopPoll(); };
+  }, [runId, projectId, router, stopPoll]);
+
+  async function onGenerate() {
+    if (running) return;
+    setStarting(true); setStartError(null); setProgress(null); refreshed.current = false;
+    try {
+      const r = await startProductRewrite(projectId, row.handle);
+      if (r.error) setStartError(r.error);
+      else if (r.runId) setRunId(r.runId);
+    } finally {
+      setStarting(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -167,13 +198,9 @@ function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row
         <div className="flex flex-wrap gap-2">
           {row.contentItemId && <Button size="sm" asChild><Link href={`/r/${slug}/product/${row.contentItemId}`}>Open in review →</Link></Button>}
           {!hasRewrite && (
-            <form action={dispatchGen}>
-              <input type="hidden" name="projectId" value={projectId} />
-              <input type="hidden" name="handle" value={row.handle} />
-              <Button size="sm" type="submit" disabled={generating}>
-                {generating ? <><Loader2 className="size-3.5 animate-spin" /> Generating… ~1 min</> : <><Sparkles className="size-3.5" /> Generate rewrite</>}
-              </Button>
-            </form>
+            <Button size="sm" onClick={onGenerate} disabled={running}>
+              {running ? <><Loader2 className="size-3.5 animate-spin" /> Generating…</> : <><Sparkles className="size-3.5" /> Generate rewrite</>}
+            </Button>
           )}
           <Button size="sm" variant="outline" asChild><a href={row.url} target="_blank" rel="noreferrer">View product <ExternalLink className="size-3.5" /></a></Button>
           {row.publishedUrl && <Button size="sm" variant="outline" asChild><a href={row.publishedUrl} target="_blank" rel="noreferrer">View live <ExternalLink className="size-3.5" /></a></Button>}
@@ -223,19 +250,17 @@ function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row
           <TabsContent value="after" className="mt-3">
             {hasRewrite ? (
               <article className={`bg-card rounded-lg border p-5 ${ARTICLE_CSS}`} dangerouslySetInnerHTML={{ __html: row.rewrittenHtml! }} />
+            ) : running ? (
+              <RunLog progress={progress} />
             ) : (
               <div className="space-y-3 rounded-lg border border-dashed p-6 text-center text-sm">
                 <p className="text-muted-foreground">No rewrite yet for this product.</p>
-                <form action={dispatchGen} className="flex justify-center">
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <input type="hidden" name="handle" value={row.handle} />
-                  <Button type="submit" disabled={generating}>
-                    {generating ? <><Loader2 className="size-4 animate-spin" /> Generating… ~1 min</> : <><Sparkles className="size-4" /> Generate rewrite</>}
-                  </Button>
-                </form>
-                {generating && <p className="text-muted-foreground text-xs">Running the engine for this product (research → ground → rewrite → verify).</p>}
-                {gen?.error && <p className="text-destructive flex items-center justify-center gap-1 text-xs"><AlertTriangle className="size-3.5" /> {gen.error}</p>}
-                {gen && !gen.error && gen.done === 0 && gen.flagged > 0 && (
+                <Button onClick={onGenerate} disabled={running}>
+                  <Sparkles className="size-4" /> Generate rewrite
+                </Button>
+                <p className="text-muted-foreground text-xs">Runs the full engine for this product: research → SERP ownership → ground → rewrite → AEO → guardrails → verify.</p>
+                {startError && <p className="text-destructive flex items-center justify-center gap-1 text-xs"><AlertTriangle className="size-3.5" /> {startError}</p>}
+                {progress && TERMINAL.has(progress.status) && progress.done === 0 && progress.flagged > 0 && (
                   <p className="flex items-center justify-center gap-1 text-xs text-amber-600"><AlertTriangle className="size-3.5" /> The verifier flagged this rewrite (ungrounded claims) — held out of review.</p>
                 )}
               </div>
@@ -256,5 +281,34 @@ function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row
         </div>
       </div>
     </>
+  );
+}
+
+// Live chain-of-thought for an in-progress product run (mirrors the Overview run panel).
+function RunLog({ progress }: { progress: RunProgress | null }) {
+  const log = progress?.log ?? [];
+  const done = !!progress && TERMINAL.has(progress.status);
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      {progress && (progress.done > 0 || progress.flagged > 0) && (
+        <div className="flex flex-wrap gap-2 text-sm">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1"><CheckCircle2 className="size-4 text-emerald-600" /> {progress.done} ready</span>
+          {progress.flagged > 0 && <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-1"><AlertTriangle className="size-4 text-amber-600" /> {progress.flagged} flagged</span>}
+        </div>
+      )}
+      <div className="bg-muted/30 max-h-[45vh] space-y-2 overflow-y-auto rounded-lg border p-3 text-sm">
+        {log.length === 0 && <div className="text-muted-foreground flex items-center gap-2"><Loader2 className="size-4 animate-spin" /> Starting the engine…</div>}
+        {log.map((e, i) => {
+          const last = i === log.length - 1;
+          return (
+            <div key={i} className="flex items-start gap-2">
+              {!done && last ? <Loader2 className="text-primary mt-0.5 size-4 shrink-0 animate-spin" /> : <span className="bg-muted-foreground/40 mt-1.5 size-1.5 shrink-0 rounded-full" />}
+              <span className={last && !done ? "text-foreground" : "text-muted-foreground"}>{e.message}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-muted-foreground text-xs">You can keep using the dashboard — the run continues in the background.</p>
+    </div>
   );
 }
