@@ -90,14 +90,26 @@ export async function draftBrandFromSite(siteUrl: string): Promise<{
     .filter(Boolean)
     .join("\n\n---\n\n");
 
-  const draft = await llmJson<BrandDraft>(
-    `Below is text scraped from ${base} (homepage, and about page if found). Extract a brand profile.\n\n${corpus}\n\nReturn JSON:\n{"brandName": string, "industry": string (short, e.g. "fabric & sewing supplies"), "audience": string (who they sell to, 2-3 sentences), "voice": string (tone/personality as instructions for a writer, 3-5 sentences), "brandFacts": string (concrete citable facts ONLY from the text: location, founding, materials, certifications, processes; markdown bullets; never invent), "seedTopics": [string] (4-8 keyword-research starting topics grounded in what they actually sell), "competitors": [string]}\n\nHARD RULES: use ONLY the text above. If it is empty, a password page, or has no real brand content, return exactly {"error":"site-unreachable"}. NEVER substitute another brand. NEVER invent facts.`,
-    {
-      tier: "fast",
-      system: "You are a precise brand strategist. You never invent facts and never substitute a different brand.",
-      maxTokens: 2000,
-    },
-  );
+  let draft: BrandDraft;
+  try {
+    draft = await llmJson<BrandDraft>(
+      `Below is text scraped from ${base} (homepage, and about page if found). Extract a brand profile.\n\n${corpus}\n\nReturn JSON:\n{"brandName": string, "industry": string (short, e.g. "fabric & sewing supplies"), "audience": string (who they sell to, 2-3 sentences), "voice": string (tone/personality as instructions for a writer, 3-5 sentences), "brandFacts": string (concrete citable facts ONLY from the text: location, founding, materials, certifications, processes; markdown bullets; never invent), "seedTopics": [string] (4-8 keyword-research starting topics grounded in what they actually sell), "competitors": [string]}\n\nHARD RULES: use ONLY the text above. If it is empty, a password page, or has no real brand content, return exactly {"error":"site-unreachable"}. NEVER substitute another brand. NEVER invent facts.`,
+      {
+        tier: "fast",
+        system: "You are a precise brand strategist. You never invent facts and never substitute a different brand.",
+        maxTokens: 2000,
+      },
+    );
+  } catch {
+    // The model returned unparseable JSON even after the repair round. Degrade
+    // gracefully to manual entry rather than surfacing a raw parse error - the
+    // site WAS readable, so let the human fill the profile in and confirm.
+    return {
+      ok: false,
+      draft: { error: "site-unreachable" },
+      note: "We read your site but could not auto-structure the brand this time. Add the details below and confirm.",
+    };
+  }
 
   if (draft.error || !draft.brandName) {
     return {

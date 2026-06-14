@@ -54,6 +54,20 @@ export function parseJsonLoose<T>(text: string): T {
 }
 
 export async function llmJson<T>(prompt: string, opts: LlmOptions = {}): Promise<T> {
-  const text = await llmText(prompt, { ...opts, system: (opts.system ?? "") + "\nRespond with JSON only." });
-  return parseJsonLoose<T>(text);
+  const system =
+    (opts.system ?? "") +
+    "\nRespond with a single valid JSON value only. Escape any double quotes and newlines inside string values.";
+  const text = await llmText(prompt, { ...opts, system });
+  try {
+    return parseJsonLoose<T>(text);
+  } catch {
+    // One repair round: hand the broken output back and demand strict JSON. LLMs
+    // routinely emit an unescaped quote inside a long string value; re-asking with
+    // the failed text almost always fixes it (mirrors the engine's structuredCall).
+    const repair = await llmText(
+      `Your previous reply was not valid JSON and failed to parse. Return the SAME data as one strictly-valid JSON value only - no prose, no code fences - with every double quote and newline inside string values properly escaped.\n\nPrevious reply:\n${text}`,
+      { ...opts, tier: opts.tier ?? "fast", temperature: 0, system: "Output strictly-valid JSON only." },
+    );
+    return parseJsonLoose<T>(repair);
+  }
 }
