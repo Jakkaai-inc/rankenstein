@@ -131,25 +131,77 @@ export function resolveAnchor(text: string, anchor: CommentAnchor): ResolvedSpan
   if (typeof anchor.startOffset === "number" && text.slice(anchor.startOffset, anchor.startOffset + quote.length) === quote) {
     return { start: anchor.startOffset, end: anchor.startOffset + quote.length, quote };
   }
-  // 2) Unique relocate by quote.
+  // 2) Unique relocate by exact quote.
   const first = text.indexOf(quote);
-  if (first === -1) return null;
-  const second = text.indexOf(quote, first + 1);
-  if (second === -1) return { start: first, end: first + quote.length, quote };
-  // 3) Ambiguous: pick the occurrence nearest the original offset.
-  if (typeof anchor.startOffset === "number") {
-    let best = first;
-    let bestDist = Math.abs(first - anchor.startOffset);
-    let idx = second;
-    while (idx !== -1) {
-      const d = Math.abs(idx - anchor.startOffset);
-      if (d < bestDist) {
-        best = idx;
-        bestDist = d;
+  if (first !== -1) {
+    const second = text.indexOf(quote, first + 1);
+    if (second === -1) return { start: first, end: first + quote.length, quote };
+    // 3) Ambiguous: pick the occurrence nearest the original offset.
+    if (typeof anchor.startOffset === "number") {
+      let best = first;
+      let bestDist = Math.abs(first - anchor.startOffset);
+      let idx = second;
+      while (idx !== -1) {
+        const d = Math.abs(idx - anchor.startOffset);
+        if (d < bestDist) {
+          best = idx;
+          bestDist = d;
+        }
+        idx = text.indexOf(quote, idx + 1);
       }
-      idx = text.indexOf(quote, idx + 1);
+      return { start: best, end: best + quote.length, quote };
     }
-    return { start: best, end: best + quote.length, quote };
+    return { start: first, end: first + quote.length, quote };
   }
-  return { start: first, end: first + quote.length, quote };
+  // 4) Whitespace-tolerant relocate. The stored quote comes from the browser's
+  // Selection.toString(), which inserts whitespace (newlines/tabs) at block and
+  // table-cell boundaries that the textContent projection does not contain (and
+  // vice versa) — so a span selected across two table cells never matches by
+  // exact substring. Collapse every whitespace run on both sides and search in
+  // that normalized space, then map the hit back to real offsets.
+  return relocateNormalized(text, quote, anchor.startOffset);
+}
+
+// Strip ALL whitespace, recording for each kept (non-whitespace) char the index
+// in `text` where it lives. Selection.toString() both adds whitespace the
+// projection lacks (at cell boundaries) and can drop whitespace the projection
+// has, so the only reliable common ground is the non-whitespace skeleton.
+function stripWhitespace(text: string): { compact: string; map: number[] } {
+  const compact: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (!/\s/.test(text[i])) {
+      compact.push(text[i]);
+      map.push(i);
+    }
+  }
+  return { compact: compact.join(""), map };
+}
+
+function relocateNormalized(text: string, quote: string, near?: number): ResolvedSpan | null {
+  const nq = quote.replace(/\s+/g, "");
+  if (!nq) return null;
+  const { compact, map } = stripWhitespace(text);
+  const hits: number[] = [];
+  let idx = compact.indexOf(nq);
+  while (idx !== -1) {
+    hits.push(idx);
+    idx = compact.indexOf(nq, idx + 1);
+  }
+  if (hits.length === 0) return null;
+  // Pick the occurrence nearest the original offset when ambiguous.
+  let chosen = hits[0];
+  if (hits.length > 1 && typeof near === "number") {
+    let bestDist = Infinity;
+    for (const h of hits) {
+      const d = Math.abs(map[h] - near);
+      if (d < bestDist) {
+        bestDist = d;
+        chosen = h;
+      }
+    }
+  }
+  const start = map[chosen];
+  const end = map[chosen + nq.length - 1] + 1; // last non-whitespace char of the match + 1
+  return { start, end, quote: text.slice(start, end) };
 }

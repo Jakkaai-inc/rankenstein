@@ -66,6 +66,18 @@ describe("resolveAnchor", () => {
     expect(resolveAnchor(text, { mode: "global", selector: "field:metaTitle" })).toBeNull();
   });
 
+  it("relocates a span selected across table cells (Selection whitespace differs from textContent)", () => {
+    // textContent concatenates adjacent cells with no separator, but the browser's
+    // Selection.toString() inserts whitespace between them — so an exact match fails.
+    const { text: cellText } = htmlToText("<tr><td>Price range</td><td>$16.95 - $374.00 USD</td></tr>");
+    expect(cellText).toBe("Price range$16.95 - $374.00 USD"); // no separator between cells
+    const quote = "Price range $16.95 - $374.00 USD"; // a space the browser added
+    const r = resolveAnchor(cellText, { mode: "span", textQuote: quote, startOffset: 0, endOffset: quote.length });
+    expect(r).not.toBeNull();
+    expect(r!.start).toBe(0);
+    expect(cellText.slice(r!.start, r!.end)).toBe("Price range$16.95 - $374.00 USD");
+  });
+
   it("disambiguates duplicate quotes by nearest original offset", () => {
     const dup = "soft fabric. very soft fabric.";
     const r = resolveAnchor(dup, { mode: "span", textQuote: "soft fabric", startOffset: 18, endOffset: 29 });

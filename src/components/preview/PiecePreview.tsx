@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 
 import type { CommentAnchor, ReviewComment } from "@/types/contracts";
 import { resolveAnchor } from "./anchor";
+import { deleteComment } from "@/app/review/actions";
 
 export interface PiecePreviewMeta {
   title: string;
@@ -52,6 +53,24 @@ function rangeOffset(container: Node, node: Node, offset: number): number {
   return total;
 }
 
+// Inverse of rangeOffset: a plain-text offset (in container.textContent space) ->
+// the text node + local offset it lands in. Used to build a DOM Range for the
+// comment highlight. Clamps to the end of the last text node.
+function locateOffset(container: Node, target: number): { node: Node; offset: number } | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let acc = 0;
+  let cur: Node | null = walker.nextNode();
+  let last: Node | null = null;
+  while (cur) {
+    const len = cur.textContent?.length ?? 0;
+    if (target <= acc + len) return { node: cur, offset: Math.max(0, target - acc) };
+    acc += len;
+    last = cur;
+    cur = walker.nextNode();
+  }
+  return last ? { node: last, offset: last.textContent?.length ?? 0 } : null;
+}
+
 interface Draft {
   anchor: CommentAnchor;
   label: string;
@@ -67,6 +86,7 @@ export default function PiecePreview({ pieceId, version, html, meta, comments, a
   const [body, setBody] = useState("");
   const [modality, setModality] = useState<"text" | "voice">("text");
   const [listening, setListening] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const recogRef = useRef<unknown>(null);
 
   const voiceSupported = useMemo(
@@ -79,6 +99,63 @@ export default function PiecePreview({ pieceId, version, html, meta, comments, a
   // when the rendered body has real textContent.
   const [plainText, setPlainText] = useState("");
   useEffect(() => setPlainText(bodyRef.current?.textContent ?? ""), [html]);
+
+  // Tint every resolvable commented span inside the rendered article, so the
+  // reviewer sees in context what each comment is attached to. Uses the CSS
+  // Custom Highlight API: it paints DOM Ranges WITHOUT mutating the body markup,
+  // so the re-anchoring offsets stay valid. Browsers without it simply show no
+  // tint (the rail still lists every comment).
+  useEffect(() => {
+    const container = bodyRef.current;
+    const cssAny = typeof CSS !== "undefined" ? (CSS as unknown as { highlights?: Map<string, unknown> }) : undefined;
+    const highlights = cssAny?.highlights;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const HighlightCtor = (typeof window !== "undefined" ? (window as any).Highlight : undefined) as
+      | (new (...ranges: Range[]) => unknown)
+      | undefined;
+    if (!container || !highlights || !HighlightCtor) return;
+    const text = container.textContent ?? "";
+    const ranges: Range[] = [];
+    for (const c of comments) {
+      if (c.anchor.mode !== "span") continue;
+      const span = resolveAnchor(text, c.anchor);
+      if (!span) continue;
+      const a = locateOffset(container, span.start);
+      const b = locateOffset(container, span.end);
+      if (!a || !b) continue;
+      try {
+        const r = document.createRange();
+        r.setStart(a.node, a.offset);
+        r.setEnd(b.node, b.offset);
+        if (!r.collapsed) ranges.push(r);
+      } catch {
+        /* skip a range we cannot build */
+      }
+    }
+    if (ranges.length === 0) {
+      highlights.delete("rk-commented");
+      return;
+    }
+    highlights.set("rk-commented", new HighlightCtor(...ranges));
+    return () => {
+      highlights.delete("rk-commented");
+    };
+  }, [comments, html, plainText]);
+
+  const onDelete = useCallback(
+    (commentId: string) => {
+      setDeleting(commentId);
+      startTransition(async () => {
+        const fd = new FormData();
+        fd.set("pieceId", pieceId);
+        fd.set("commentId", commentId);
+        await deleteComment(fd);
+        setDeleting(null);
+        router.refresh();
+      });
+    },
+    [pieceId, router],
+  );
 
   const openSpanDraft = useCallback(() => {
     if (readOnly) return;
@@ -206,6 +283,11 @@ export default function PiecePreview({ pieceId, version, html, meta, comments, a
           const lost = !re && !!c.anchor.textQuote;
           return (
             <div key={c.id} className={`rk-card ${c.modality === "voice" ? "voice" : ""}`}>
+              {!readOnly && (
+                <button type="button" className="rk-del" title="Remove this comment" disabled={deleting === c.id} onClick={() => onDelete(c.id)}>
+                  {deleting === c.id ? "…" : "×"}
+                </button>
+              )}
               <div className="rk-quote">{c.anchor.textQuote ? `“${c.anchor.textQuote}”` : "(span)"}{lost && <span className="rk-lost"> moved/edited</span>}</div>
               <div className="rk-body">{c.modality === "voice" ? "🎤 " : ""}{c.body}</div>
             </div>
@@ -215,6 +297,11 @@ export default function PiecePreview({ pieceId, version, html, meta, comments, a
         {fieldComments.length > 0 && <div className="rk-rail-sec">On the metadata</div>}
         {fieldComments.map((c) => (
           <div key={c.id} className="rk-card">
+            {!readOnly && (
+              <button type="button" className="rk-del" title="Remove this comment" disabled={deleting === c.id} onClick={() => onDelete(c.id)}>
+                {deleting === c.id ? "…" : "×"}
+              </button>
+            )}
             <div className="rk-quote">{c.anchor.selector?.replace("field:", "") ?? "general"}</div>
             <div className="rk-body">{c.modality === "voice" ? "🎤 " : ""}{c.body}</div>
           </div>
@@ -285,12 +372,16 @@ const PIECE_CSS = `
 .rk-piece th,.rk-piece td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
 .rk-piece ul,.rk-piece ol{margin:10px 0;padding-left:22px}
 .rk-piece ::selection{background:#f6e2cd}
+::highlight(rk-commented){background-color:#fbe7c2;color:inherit}
 .rk-rail{align-self:start;position:sticky;top:16px}
 .rk-rail-h{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:0 0 10px}
 .rk-rail-sec{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:14px 0 6px}
 .rk-empty{font-size:13px;color:var(--mut)}
-.rk-card{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 11px;margin-bottom:8px;background:var(--card)}
+.rk-card{position:relative;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 26px 8px 11px;margin-bottom:8px;background:var(--card)}
 .rk-card.voice{border-left-color:#5b3fa0}
+.rk-del{position:absolute;top:5px;right:6px;width:18px;height:18px;line-height:1;border:none;border-radius:4px;background:transparent;color:var(--mut);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.rk-del:hover:not(:disabled){background:var(--muted);color:var(--foreground)}
+.rk-del:disabled{cursor:default;opacity:.6}
 .rk-quote{font-size:12px;color:var(--mut);font-style:italic;margin-bottom:3px}
 .rk-lost{color:var(--accent);font-style:normal;font-weight:600}
 .rk-body{font-size:14px;color:var(--ink);white-space:pre-wrap}
