@@ -8,3 +8,8 @@ dist/
 
 *.tsbuildinfo
 .next/
+
+# raw session exports — contain secrets, never commit
+session-log.md
+session-log.jsonl
+SESSION-LOG.md
