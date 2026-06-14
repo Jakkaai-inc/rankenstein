@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getOriginalProduct, type OriginalProduct } from "@/app/projects/[id]/products/actions";
 import { generateProductRewrite, type GenProductResult } from "@/app/actions";
 
@@ -21,12 +22,23 @@ export interface ProductRow {
   url: string;
   contentItemId: string | null;
   status: string | null;
+  rewriteTitle: string | null;
+  slug: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
   primaryKeyword: string | null;
   secondaryKeywords: string[];
   rewrittenHtml: string | null;
+  verifier: { verdict: string; isSelfCheck: boolean } | null;
+  flags: { type: string; severity: string; note: string }[];
+  versions: number;
   updatedAt: string | null;
   publishedUrl: string | null;
 }
+
+// Clean published-page typography for rendered HTML (mirrors the review preview look).
+const ARTICLE_CSS =
+  "max-w-none text-sm leading-relaxed [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mt-5 [&_h2]:mb-1.5 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-2.5 [&_ul]:my-2.5 [&_ul]:space-y-1 [&_li]:ml-5 [&_li]:list-disc [&_strong]:font-semibold [&_a]:text-primary [&_a]:underline";
 
 const FILTERS = [
   { key: "ALL", label: "All" },
@@ -135,75 +147,114 @@ function Drawer({ slug, projectId, row }: { slug: string; projectId: string; row
     return () => { alive = false; };
   }, [projectId, row.handle]);
 
+  const hasRewrite = !!row.rewrittenHtml;
+  const seoUrl = `${row.url.replace(/^https?:\/\//, "").split("/")[0]}/products/${row.handle}`;
+
   return (
     <>
       <SheetHeader>
-        <SheetTitle className="pr-6 text-lg">{row.title}</SheetTitle>
-        <div className="text-muted-foreground flex items-center gap-2 text-xs">
-          <span>{row.handle}</span>
-          {row.status && <StatusBadge status={row.status} />}
+        <SheetTitle className="pr-6 text-lg leading-tight">{row.rewriteTitle ?? row.title}</SheetTitle>
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
+          {row.status ? <StatusBadge status={row.status} /> : <Badge variant="secondary">no rewrite</Badge>}
+          <span>product rewrite</span>
+          {row.versions > 0 && <span>· v{row.versions}</span>}
+          <span>· {row.handle}</span>
         </div>
       </SheetHeader>
+
       <div className="space-y-5 p-4">
+        {/* Action bar (mirrors the review toolbar) */}
         <div className="flex flex-wrap gap-2">
+          {row.contentItemId && <Button size="sm" asChild><Link href={`/r/${slug}/product/${row.contentItemId}`}>Open in review →</Link></Button>}
+          {!hasRewrite && (
+            <form action={dispatchGen}>
+              <input type="hidden" name="projectId" value={projectId} />
+              <input type="hidden" name="handle" value={row.handle} />
+              <Button size="sm" type="submit" disabled={generating}>
+                {generating ? <><Loader2 className="size-3.5 animate-spin" /> Generating… ~1 min</> : <><Sparkles className="size-3.5" /> Generate rewrite</>}
+              </Button>
+            </form>
+          )}
           <Button size="sm" variant="outline" asChild><a href={row.url} target="_blank" rel="noreferrer">View product <ExternalLink className="size-3.5" /></a></Button>
-          {row.contentItemId && <Button size="sm" asChild><Link href={`/r/${slug}/product/${row.contentItemId}`}>Open rewrite in review →</Link></Button>}
+          {row.publishedUrl && <Button size="sm" variant="outline" asChild><a href={row.publishedUrl} target="_blank" rel="noreferrer">View live <ExternalLink className="size-3.5" /></a></Button>}
         </div>
 
-        {row.contentItemId && (
-          <Field label="Keywords used">
-            <div className="flex flex-wrap gap-1.5">
-              {row.primaryKeyword && <Badge>{row.primaryKeyword}</Badge>}
-              {row.secondaryKeywords.map((k) => <Badge key={k} variant="secondary">{k}</Badge>)}
-            </div>
-          </Field>
+        {/* Grounding proof (mirrors review) */}
+        {(row.verifier || row.flags.length > 0) && (
+          <div className="bg-muted/40 rounded-lg border p-3 text-sm">
+            {row.verifier && (
+              <div>
+                <span className="font-medium">Verifier:</span>{" "}
+                <span className={row.verifier.verdict === "pass" ? "text-emerald-600" : "text-destructive"}>{row.verifier.verdict}</span>{" "}
+                <span className="text-muted-foreground text-xs">({row.verifier.isSelfCheck ? "self-check" : "independent"})</span>
+              </div>
+            )}
+            {row.flags.map((f, i) => (
+              <div key={i} className="text-muted-foreground mt-1 text-xs"><b className="uppercase">{f.type} ({f.severity})</b> · {f.note}</div>
+            ))}
+          </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Before · live on store">
-            {loading && <div className="text-muted-foreground text-sm">Loading from Shopify…</div>}
-            {orig && !orig.ok && <div className="text-destructive text-sm">{orig.error}</div>}
-            {orig && orig.ok && (
-              <div className="bg-muted/40 max-h-[55vh] overflow-y-auto rounded-lg border p-3 text-sm [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: orig.descriptionHtml || "<span>(empty)</span>" }} />
-            )}
-          </Field>
-          <Field label="After · Rankenstein rewrite">
-            {row.rewrittenHtml ? (
-              <div className="max-h-[55vh] overflow-y-auto rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm [&_h2]:mt-3 [&_h2]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: row.rewrittenHtml }} />
+        {/* SEO snippet preview */}
+        {hasRewrite && (row.metaTitle || row.metaDescription) && (
+          <div className="rounded-lg border p-3">
+            <div className="text-muted-foreground mb-1 text-[11px] tracking-wide uppercase">Search preview</div>
+            <div className="text-xs text-emerald-700">{seoUrl}</div>
+            <div className="text-base leading-snug text-[#1a0dab]">{row.metaTitle ?? row.rewriteTitle ?? row.title}</div>
+            <div className="text-muted-foreground text-xs">{row.metaDescription ?? "—"}</div>
+          </div>
+        )}
+
+        {/* Keywords */}
+        {hasRewrite && (row.primaryKeyword || row.secondaryKeywords.length > 0) && (
+          <div className="flex flex-wrap gap-1.5">
+            {row.primaryKeyword && <Badge>{row.primaryKeyword}</Badge>}
+            {row.secondaryKeywords.map((k) => <Badge key={k} variant="secondary">{k}</Badge>)}
+          </div>
+        )}
+
+        {/* The piece — After / Before, rendered like the review preview */}
+        <Tabs defaultValue={hasRewrite ? "after" : "before"}>
+          <TabsList>
+            <TabsTrigger value="after">After · Rankenstein</TabsTrigger>
+            <TabsTrigger value="before">Before · live</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="after" className="mt-3">
+            {hasRewrite ? (
+              <article className={`bg-card rounded-lg border p-5 ${ARTICLE_CSS}`} dangerouslySetInnerHTML={{ __html: row.rewrittenHtml! }} />
             ) : (
-              <div className="space-y-3 rounded-lg border border-dashed p-4 text-sm">
-                <p className="text-muted-foreground">No rewrite yet.</p>
-                <form action={dispatchGen}>
+              <div className="space-y-3 rounded-lg border border-dashed p-6 text-center text-sm">
+                <p className="text-muted-foreground">No rewrite yet for this product.</p>
+                <form action={dispatchGen} className="flex justify-center">
                   <input type="hidden" name="projectId" value={projectId} />
                   <input type="hidden" name="handle" value={row.handle} />
-                  <Button size="sm" type="submit" disabled={generating}>
-                    {generating ? <><Loader2 className="size-3.5 animate-spin" /> Generating… ~1 min</> : <><Sparkles className="size-3.5" /> Generate rewrite</>}
+                  <Button type="submit" disabled={generating}>
+                    {generating ? <><Loader2 className="size-4 animate-spin" /> Generating… ~1 min</> : <><Sparkles className="size-4" /> Generate rewrite</>}
                   </Button>
                 </form>
                 {generating && <p className="text-muted-foreground text-xs">Running the engine for this product (research → ground → rewrite → verify).</p>}
-                {gen?.error && <p className="text-destructive flex items-center gap-1 text-xs"><AlertTriangle className="size-3.5" /> {gen.error}</p>}
+                {gen?.error && <p className="text-destructive flex items-center justify-center gap-1 text-xs"><AlertTriangle className="size-3.5" /> {gen.error}</p>}
                 {gen && !gen.error && gen.done === 0 && gen.flagged > 0 && (
-                  <p className="flex items-center gap-1 text-xs text-amber-600"><AlertTriangle className="size-3.5" /> The verifier flagged this rewrite (ungrounded claims) — held out of review.</p>
+                  <p className="flex items-center justify-center gap-1 text-xs text-amber-600"><AlertTriangle className="size-3.5" /> The verifier flagged this rewrite (ungrounded claims) — held out of review.</p>
                 )}
               </div>
             )}
-          </Field>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="before" className="mt-3">
+            {loading && <div className="text-muted-foreground text-sm">Loading from Shopify…</div>}
+            {orig && !orig.ok && <div className="text-destructive text-sm">{orig.error}</div>}
+            {orig && orig.ok && (
+              <article className={`bg-muted/30 rounded-lg border p-5 ${ARTICLE_CSS}`} dangerouslySetInnerHTML={{ __html: orig.descriptionHtml || "<p class='text-muted-foreground'>(empty)</p>" }} />
+            )}
+          </TabsContent>
+        </Tabs>
 
         <div className="text-muted-foreground text-xs">
-          {row.updatedAt ? `Rewrite updated ${row.updatedAt.slice(0, 16).replace("T", " ")}` : "No rewrite yet"}
-          {row.publishedUrl && <> · <a href={row.publishedUrl} target="_blank" rel="noreferrer" className="text-primary underline">published live ↗</a></>}
+          {row.updatedAt ? `Rewrite updated ${row.updatedAt.slice(0, 16).replace("T", " ")}` : ""}
         </div>
       </div>
     </>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">{label}</div>
-      {children}
-    </div>
   );
 }

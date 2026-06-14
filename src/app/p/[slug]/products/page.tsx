@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
 import ProductsTable, { type ProductRow } from "@/components/dashboard/ProductsTable";
+import type { VerifierVerdict, GuardrailFlag } from "@/types/contracts";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function ProductsPage({ params }: { params: Promise<{ slug:
     prisma.contentItem.findMany({
       where: { projectId: project.id, kind: "PRODUCT_REWRITE", sourceRef: { not: null } },
       orderBy: { updatedAt: "desc" },
-      select: { id: true, sourceRef: true, status: true, primaryKeyword: true, brief: true, html: true, updatedAt: true, publishedUrl: true },
+      select: { id: true, sourceRef: true, status: true, primaryKeyword: true, brief: true, html: true, updatedAt: true, publishedUrl: true, title: true, slug: true, metaTitle: true, metaDescription: true, verifierVerdict: true, guardrailFlags: true, _count: { select: { versions: true } } },
     }),
   ]);
 
@@ -30,15 +31,24 @@ export default async function ProductsPage({ params }: { params: Promise<{ slug:
   const rows: ProductRow[] = pages.map((pg) => {
     const it = pg.handle ? byHandle.get(pg.handle) : undefined;
     const brief = (it?.brief ?? {}) as { secondaryKeywords?: string[] };
+    const v = it?.verifierVerdict as unknown as VerifierVerdict | null;
+    const flags = (it?.guardrailFlags as unknown as GuardrailFlag[] | null) ?? [];
     return {
       handle: pg.handle ?? "",
       title: pg.title ?? pg.handle ?? "Untitled",
       url: pg.url,
       contentItemId: it?.id ?? null,
       status: it?.status ?? null,
+      rewriteTitle: it?.title ?? null,
+      slug: it?.slug ?? null,
+      metaTitle: it?.metaTitle ?? null,
+      metaDescription: it?.metaDescription ?? null,
       primaryKeyword: it?.primaryKeyword ?? null,
       secondaryKeywords: Array.isArray(brief.secondaryKeywords) ? brief.secondaryKeywords.slice(0, 8) : [],
       rewrittenHtml: it?.html ?? null,
+      verifier: v ? { verdict: v.verdict, isSelfCheck: !!v.isSelfCheck } : null,
+      flags: flags.map((f) => ({ type: f.type, severity: f.severity, note: f.note })),
+      versions: it?._count.versions ?? 0,
       updatedAt: it?.updatedAt ? it.updatedAt.toISOString() : null,
       publishedUrl: it?.publishedUrl ?? null,
     };
