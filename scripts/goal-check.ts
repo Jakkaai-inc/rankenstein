@@ -5,7 +5,7 @@ import "dotenv/config";
 
 import { prisma } from "../src/lib/db";
 
-const APP = "https://rankenstein.app";
+const APP = "https://studio.rankenstein.app"; // app moved to the studio subdomain; apex is marketing
 const SITE = "https://ezfabricinc.com";
 
 type Check = { id: string; desc: string; run: () => Promise<{ ok: boolean; note: string }> };
