@@ -15,8 +15,9 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import type { CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } from "@/types/contracts";
+import type { ContentBrief, CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } from "@/types/contracts";
 import PiecePreview, { type NewCommentInput, type PiecePreviewMeta } from "./PiecePreview";
+import BriefPanel from "./BriefPanel";
 import type { VersionContent } from "@/app/review/actions";
 
 export interface ReviewShellVersion {
@@ -51,6 +52,7 @@ interface Props {
   comments: ReviewComment[]; // open comments on the latest version
   flags: GuardrailFlag[];
   verdict: VerifierVerdict | null;
+  brief?: ContentBrief | null; // engine research story (read-only context panel)
   publishedUrl?: string | null;
   // server actions / wiring
   addComment: (input: NewCommentInput) => Promise<void>;
@@ -62,7 +64,7 @@ interface Props {
 type PollState = "idle" | "rewriting" | "done" | "error";
 
 export default function ReviewShell(props: Props) {
-  const { pieceId, status, meta, latestVersion, latestHtml, versions, comments, flags, verdict, publishedUrl } = props;
+  const { pieceId, status, meta, latestVersion, latestHtml, versions, comments, flags, verdict, brief, publishedUrl } = props;
   const router = useRouter();
 
   const [selected, setSelected] = useState(latestVersion);
@@ -313,6 +315,9 @@ export default function ReviewShell(props: Props) {
           )}
         </div>
       )}
+
+      {/* Engine research story (read-only) above the draft. */}
+      <BriefPanel brief={brief ?? null} />
 
       {/* The article + Google-Docs comment rail. Read-only off-latest or while frozen. */}
       <div className={frozen ? "pointer-events-none relative opacity-60" : "relative"}>

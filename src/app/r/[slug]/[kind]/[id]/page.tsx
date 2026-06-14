@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
-import type { CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } from "@/types/contracts";
+import type { ContentBrief, CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } from "@/types/contracts";
 import ReviewShell from "@/components/preview/ReviewShell";
 import { detectVolatileFlags } from "@/components/preview/volatile";
 import { addComment, approve, getVersionContent } from "@/app/review/actions";
@@ -39,6 +39,7 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ sl
   const volatileFlags = detectVolatileFlags(piece.html ?? "");
   const flags: GuardrailFlag[] = [...engineFlags, ...volatileFlags];
   const verdict = piece.verifierVerdict as unknown as VerifierVerdict | null;
+  const brief = piece.brief as unknown as ContentBrief | null;
 
   return (
     <main className="bg-muted/30 min-h-screen">
@@ -68,6 +69,7 @@ export default async function ReviewPiecePage({ params }: { params: Promise<{ sl
           comments={currentComments}
           flags={flags}
           verdict={verdict}
+          brief={brief}
           publishedUrl={piece.publishedUrl}
           addComment={addComment}
           approve={approve}
