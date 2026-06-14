@@ -62,6 +62,7 @@ import { verifyCitations, citationsBlocking, failedCitations } from './layers/ci
 import { aeoCheck, aeoBlockingFailures } from './layers/aeo';
 import { guardrails, hasBlockingFlag } from './layers/guardrails';
 import { runGates } from './layers/gates';
+import { fillImages, type ImageGenProvider, type ImageStore } from './layers/image-gen';
 import { wordCount } from './html';
 import {
   toContractBrief,
@@ -330,6 +331,10 @@ export type ArticleRunDeps = {
   drafter: ArticleDrafter;
   citationChecker: CitationChecker;
   verifier: ArticleVerifier;
+  /** optional image generator; only used when runConfig.layers.imageGen. */
+  imageProvider?: ImageGenProvider;
+  /** optional host for generated images; without it images inline as data URLs. */
+  imageStore?: ImageStore;
 };
 
 export type ArticleRunOptions = {
@@ -542,6 +547,24 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
   }
   const verifierSatisfiesPass = verdict.verdict === 'pass' && deps.verifier.mode === 'independent';
   await emit({ layer: 'verify', ok: verdict.verdict === 'pass', note: `verdict=${verdict.verdict} mode=${verdict.mode} attempts=${attempts}` });
+
+  // ── image-gen (toggle; renders the drafter's image prompts) ────────────────
+  // Presentational only — runs after verify so it never affects grounding/gates.
+  // Failures degrade to the placeholder + a WARN flag (never block publish).
+  if (runConfig.layers.imageGen && deps.imageProvider && articleDraft.images.length) {
+    const filled = await fillImages({
+      html: pieceDraft.html,
+      images: articleDraft.images,
+      provider: deps.imageProvider,
+      store: deps.imageStore,
+      keyHint: pieceDraft.meta.slug,
+    });
+    pieceDraft = { ...pieceDraft, html: filled.html };
+    articleDraft = { ...articleDraft, html: filled.html, images: filled.images };
+    guardrailFlags.push(...filled.flags);
+    const made = filled.flags.filter((f) => f.severity === 'GOOD').length;
+    await emit({ layer: 'image-gen', ok: true, note: `${made}/${filled.images.length} image(s) generated via ${deps.imageProvider.id}` });
+  }
 
   // ── status ────────────────────────────────────────────────────────────────
   const blocking =

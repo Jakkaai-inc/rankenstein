@@ -12,6 +12,31 @@ import { AnthropicOutlineProvider, AnthropicOutlineCritic } from './anthropic-ou
 import { AnthropicArticleDrafter } from './anthropic-draft';
 import { FetchAgentCitationChecker } from './anthropic-citation';
 import { IndependentArticleVerifier } from '../layers/verify';
+import { GeminiImageProvider } from './gemini-image';
+import { S3ImageStore } from './s3-image-store';
+import type { ImageGenProvider, ImageStore } from '../layers/image-gen';
+
+/** Build the image generator only when a key is configured; otherwise the
+ *  image-gen layer is simply skipped (the toggle becomes a no-op). */
+function maybeImageProvider(): ImageGenProvider | undefined {
+  if (!process.env.GEMINI_API_KEY) return undefined;
+  try {
+    return new GeminiImageProvider();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Use S3 hosting when a bucket is configured; otherwise images inline as data
+ *  URLs (fine for the review preview). */
+function maybeImageStore(): ImageStore | undefined {
+  if (!process.env.RANKENSTEIN_IMAGE_BUCKET) return undefined;
+  try {
+    return new S3ImageStore();
+  } catch {
+    return undefined;
+  }
+}
 
 export function liveDeps(opts?: { apiKey?: string }): RunDeps {
   return {
@@ -34,6 +59,8 @@ export function liveArticleDeps(opts?: { apiKey?: string }): ArticleRunDeps {
     drafter: new AnthropicArticleDrafter(opts),
     citationChecker: new FetchAgentCitationChecker(opts),
     verifier: new IndependentArticleVerifier(),
+    imageProvider: maybeImageProvider(),
+    imageStore: maybeImageStore(),
   };
 }
 
