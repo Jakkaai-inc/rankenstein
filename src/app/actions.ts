@@ -228,7 +228,17 @@ export async function planContentCalendar(formData: FormData) {
 
   if (goals.includes("create_articles") && project.brandProfile?.confirmed) {
     const bp = project.brandProfile;
-    const topics = await proposeArticleTopics({ brandName: bp.brandName ?? project.name, industry: bp.industry, audience: bp.audience, seedTopics: bp.seedTopics ?? [] }, count);
+
+    // Idempotent: clear the un-drafted plan so re-clicking rebuilds it instead of
+    // piling up duplicates. Drafted articles (PENDING_REVIEW/etc.) are untouched.
+    await prisma.contentItem.deleteMany({ where: { projectId, kind: "ARTICLE", status: "DRAFTING" } });
+
+    // Don't propose topics already drafted for this project.
+    const existing = await prisma.contentItem.findMany({ where: { projectId, kind: "ARTICLE" }, select: { title: true, primaryKeyword: true } });
+    const seen = new Set(existing.flatMap((c) => [c.title, c.primaryKeyword].filter(Boolean).map((s) => s!.toLowerCase())));
+
+    const proposed = await proposeArticleTopics({ brandName: bp.brandName ?? project.name, industry: bp.industry, audience: bp.audience, seedTopics: bp.seedTopics ?? [] }, count + 4);
+    const topics = proposed.filter((t) => !seen.has(t.title.toLowerCase()) && !seen.has(t.primaryKeyword.toLowerCase())).slice(0, count);
 
     // schedule weekly, starting next Monday
     const start = new Date();

@@ -1,13 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 
-import { CalendarPlus } from "lucide-react";
-
-import { runArticles, planContentCalendar } from "@/app/actions";
+import { runArticles } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
 import ContentTable, { type ContentRow } from "@/components/dashboard/ContentTable";
 import ContentCalendar, { type PlannedArticle } from "@/components/dashboard/ContentCalendar";
+import PlanCalendarForm from "@/components/dashboard/PlanCalendarForm";
 import { Button } from "@/components/ui/button";
 import type { VerifierVerdict } from "@/types/contracts";
 
@@ -65,12 +64,7 @@ export default async function ArticlesPage({ params }: { params: Promise<{ slug:
           <p className="text-muted-foreground text-sm">Your content calendar and the articles Rankenstein has drafted.</p>
         </div>
         <div className="flex items-center gap-2">
-          <form action={planContentCalendar}>
-            <input type="hidden" name="projectId" value={project.id} />
-            <input type="hidden" name="goals" value="create_articles" />
-            <input type="hidden" name="count" value="8" />
-            <Button type="submit"><CalendarPlus className="size-4" /> {planned.length > 0 ? "Add to calendar" : "Plan content calendar"}</Button>
-          </form>
+          <PlanCalendarForm projectId={project.id} label={planned.length > 0 ? "Re-plan calendar" : "Plan content calendar"} />
           <form action={runArticles}>
             <input type="hidden" name="projectId" value={project.id} />
             <input type="hidden" name="limit" value="2" />
@@ -90,12 +84,9 @@ export default async function ArticlesPage({ params }: { params: Promise<{ slug:
         <div className="bg-card rounded-xl border p-10 text-center">
           <p className="text-sm font-medium">No content calendar yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">Rankenstein proposes article topics from your brand&apos;s seed topics, scheduled weekly. Then draft any of them with one click.</p>
-          <form action={planContentCalendar} className="mt-4 flex justify-center">
-            <input type="hidden" name="projectId" value={project.id} />
-            <input type="hidden" name="goals" value="create_articles" />
-            <input type="hidden" name="count" value="8" />
-            <Button type="submit"><CalendarPlus className="size-4" /> Plan content calendar</Button>
-          </form>
+          <div className="mt-4 flex justify-center">
+            <PlanCalendarForm projectId={project.id} label="Plan content calendar" />
+          </div>
         </div>
       ) : null}
     </div>
