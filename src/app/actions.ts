@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { getAccount, requireAccount, signIn, signOut } from "@/lib/session";
 import { confirmBrand, draftBrandForProject } from "@/lib/services/brand";
 import { createProject as createProjectSvc } from "@/lib/services/projects";
-import { adminClient, fetchShopContext, saveConnection, normalizeShopDomain, SHOPIFY_SCOPES } from "@/lib/shopify";
+import { adminClient, fetchShopContext, saveConnection, normalizeShopDomain, SHOPIFY_SCOPES, requireAdminClient } from "@/lib/shopify";
 import { prisma } from "@/lib/db";
 import { runCatalogRewrite, runArticleBatch } from "@/lib/run/orchestrator";
 import { deriveSlug } from "@/lib/slug";
@@ -281,9 +281,46 @@ export async function removePlannedArticle(formData: FormData) {
   revalidatePath(`/p/${await projectSlug(item.projectId)}`, "layout");
 }
 
-// Generate a rewrite for ONE specific product (from the Products tab). Fetches that
-// product's public JSON (same shape the engine grounds against) and runs the engine
-// for it only. Clears a prior FAILED/DRAFTING attempt so retry works.
+// Fetch ONE product in the engine's products.json shape. Tries the public storefront
+// JSON first (published products), then falls back to the Shopify Admin connection
+// (covers unpublished products / handle quirks where the public .json 404s).
+type AdminVariant = { id: string; title: string; sku: string | null; price: string | null; compareAtPrice: string | null; availableForSale: boolean; selectedOptions: { name: string; value: string }[] };
+async function fetchProductRaw(projectId: string, base: string, handle: string): Promise<unknown | null> {
+  try {
+    const res = await fetch(`${base}/products/${handle}.json`, { signal: AbortSignal.timeout(12000) });
+    if (res.ok) {
+      const j = await res.json();
+      if (j?.product) return j.product;
+    }
+  } catch { /* fall through to Admin */ }
+
+  try {
+    const { client } = await requireAdminClient(projectId);
+    const d = await client.graphql<{ productByHandle: { id: string; title: string; handle: string; descriptionHtml: string | null; vendor: string | null; productType: string | null; tags: string[] | null; variants: { nodes: AdminVariant[] } } | null }>(
+      `query($h:String!){ productByHandle(handle:$h){ id title handle descriptionHtml vendor productType tags variants(first:100){ nodes { id title sku price compareAtPrice availableForSale selectedOptions { name value } } } } }`,
+      { h: handle },
+    );
+    const p = d.productByHandle;
+    if (!p) return null;
+    return {
+      id: p.id, title: p.title, handle: p.handle, body_html: p.descriptionHtml ?? "",
+      vendor: p.vendor ?? "", product_type: p.productType ?? "", tags: p.tags ?? [], options: [], images: [],
+      variants: (p.variants?.nodes ?? []).map((v) => ({
+        id: v.id, title: v.title, sku: v.sku ?? null,
+        option1: v.selectedOptions?.[0]?.value ?? null,
+        option2: v.selectedOptions?.[1]?.value ?? null,
+        option3: v.selectedOptions?.[2]?.value ?? null,
+        price: v.price, compare_at_price: v.compareAtPrice ?? null,
+        available: !!v.availableForSale, grams: null,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Generate a rewrite for ONE specific product (from the Products tab). Runs the engine
+// for it only; clears a prior FAILED/DRAFTING attempt so retry works.
 export type GenProductResult = { done: number; flagged: number; error?: string };
 export async function generateProductRewrite(formData: FormData): Promise<GenProductResult> {
   const account = await requireAccount();
@@ -297,15 +334,8 @@ export async function generateProductRewrite(formData: FormData): Promise<GenPro
   });
 
   const base = project.siteUrl.replace(/\/$/, "");
-  let product: unknown;
-  try {
-    const res = await fetch(`${base}/products/${handle}.json`, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return { done: 0, flagged: 0, error: `could not fetch product (${res.status})` };
-    product = (await res.json()).product;
-  } catch (e) {
-    return { done: 0, flagged: 0, error: e instanceof Error ? e.message : "fetch failed" };
-  }
-  if (!product) return { done: 0, flagged: 0, error: "product not found on the storefront" };
+  const product = await fetchProductRaw(projectId, base, handle);
+  if (!product) return { done: 0, flagged: 0, error: "could not load this product (storefront + Shopify)" };
 
   const run = await prisma.run.create({ data: { projectId, status: "QUEUED" } });
   const r = await runCatalogRewrite({ projectId, runId: run.id, rawProducts: [product], limit: 1 });
