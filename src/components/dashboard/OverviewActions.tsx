@@ -102,12 +102,13 @@ export default function OverviewActions({ projectId, slug, pending }: { projectI
               )}
               {log.map((e, i) => {
                 const last = i === log.length - 1;
+                const isStage = e.phase === "stage";
                 return (
-                  <div key={i} className="flex items-start gap-2">
+                  <div key={i} className={`flex items-start gap-2 ${isStage ? "pl-5" : ""}`}>
                     {running && last
                       ? <Loader2 className="text-primary mt-0.5 size-4 shrink-0 animate-spin" />
-                      : <span className="bg-muted-foreground/40 mt-1.5 size-1.5 shrink-0 rounded-full" />}
-                    <span className={last && running ? "text-foreground" : "text-muted-foreground"}>{e.message}</span>
+                      : <span className={`shrink-0 rounded-full ${isStage ? "bg-muted-foreground/30 mt-1.5 size-1" : "bg-muted-foreground/50 mt-1.5 size-1.5"}`} />}
+                    <span className={(last && running ? "text-foreground" : "text-muted-foreground") + (isStage ? " text-xs" : "")}>{e.message}</span>
                   </div>
                 );
               })}

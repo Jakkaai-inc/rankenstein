@@ -109,6 +109,8 @@ export type RunOptions = {
   authority?: SiteAuthority;
   filterConfig?: FilterConfig;
   seedTerms?: string[];
+  /** fires after each layer completes, for live progress streaming. */
+  onProgress?: (stage: StageLog) => void | Promise<void>;
 };
 
 function depthToWindow(depth: RunConfig['depth']): { min: number; max: number } {
@@ -162,6 +164,8 @@ function hardStopResult(product: NormalizedProduct, reason: string, log: StageLo
 export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResult> {
   const { product, brand, catalogIndex, runConfig, deps } = opts;
   const log: StageLog[] = [];
+  // record a stage AND stream it live (onProgress failures never break the run).
+  const emit = async (s: StageLog) => { log[log.length] = s; try { await opts.onProgress?.(s); } catch { /* progress is best-effort */ } };
   const country = 'US';
 
   // ── ground (HARD STOP on unconfirmed brand) ───────────────────────────────
@@ -170,28 +174,28 @@ export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResu
     ground = groundProduct({ product, brand, store: opts.store, authority: opts.authority });
   } catch (e) {
     if (e instanceof BrandUnconfirmedError) {
-      log.push({ layer: 'ground', ok: false, note: e.message });
+      await emit({ layer: 'ground', ok: false, note: e.message });
       return hardStopResult(product, e.message, log, null);
     }
     throw e;
   }
-  log.push({ layer: 'ground', ok: true, note: `${ground.facts.length} facts, ${ground.gaps.length} gaps, ${ground.provenanceFlags.length} provenance flags` });
+  await emit({ layer: 'ground', ok: true, note: `${ground.facts.length} facts, ${ground.gaps.length} gaps, ${ground.provenanceFlags.length} provenance flags` });
 
   // ── research ──────────────────────────────────────────────────────────────
   const seedTerms = opts.seedTerms ?? brand.seedTerms;
   const candidates = await deps.research.keywords(seedTerms, country);
   validateResearch(candidates);
-  log.push({ layer: 'research', ok: true, note: `${candidates.length} raw candidates` });
+  await emit({ layer: 'research', ok: true, note: `${candidates.length} raw candidates` });
 
   // ── filter (deterministic) ────────────────────────────────────────────────
   const filtered = filterKeywords(candidates, catalogIndex, product, opts.filterConfig ?? EZ_FABRIC_FILTER_CONFIG);
-  log.push({ layer: 'filter', ok: true, note: `${filtered.kept.length} kept, ${filtered.dropped.length} dropped/routed` });
+  await emit({ layer: 'filter', ok: true, note: `${filtered.kept.length} kept, ${filtered.dropped.length} dropped/routed` });
 
   // ── serp-ownership (top N) ────────────────────────────────────────────────
   const topN = Math.min(runConfig.depth === 'deep' ? 16 : 12, filtered.kept.length);
   const shortlist = filtered.kept.slice(0, topN);
   const serp = await deps.serp.ownership(shortlist, ground.authority);
-  log.push({ layer: 'serp-ownership', ok: true, note: `${serp.length} verdicts` });
+  await emit({ layer: 'serp-ownership', ok: true, note: `${serp.length} verdicts` });
 
   // ── select (deterministic firewall + roles + variant map) ─────────────────
   let selection: Selection;
@@ -203,10 +207,10 @@ export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResu
     const reason =
       (e instanceof Error ? e.message : 'keyword selection failed') +
       ' - needs human review or different seed terms.';
-    log.push({ layer: 'select', ok: false, note: reason });
+    await emit({ layer: 'select', ok: false, note: reason });
     return hardStopResult(product, reason, log, ground);
   }
-  log.push({ layer: 'select', ok: true, note: `primary="${selection.primary.candidate.keyword}", ${selection.secondaries.length} secondaries, ${selection.variantMap.length} variant terms, history=${selection.historyDecision}` });
+  await emit({ layer: 'select', ok: true, note: `primary="${selection.primary.candidate.keyword}", ${selection.secondaries.length} secondaries, ${selection.variantMap.length} variant terms, history=${selection.historyDecision}` });
 
   // ── rewrite ───────────────────────────────────────────────────────────────
   const window = depthToWindow(runConfig.depth);
@@ -220,14 +224,14 @@ export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResu
     gaps: ground.gaps.map((g) => `${g.field}: ${g.note}`),
   };
   let draft = await deps.rewriter.rewrite(rewriteInput);
-  log.push({ layer: 'rewrite', ok: true, note: `rewriter=${draft.rewriterId}, ${wordCount(draft.html)} words` });
+  await emit({ layer: 'rewrite', ok: true, note: `rewriter=${draft.rewriterId}, ${wordCount(draft.html)} words` });
 
   // ── aeo (toggle) ──────────────────────────────────────────────────────────
   let aeo: AeoFinding[] = [];
   if (runConfig.layers.aeo) {
     aeo = aeoCheck(draft, ground.facts, selection.primary.candidate.keyword);
     const aeoBlock = aeoBlockingFailures(aeo);
-    log.push({ layer: 'aeo', ok: aeoBlock.length === 0, note: aeoBlock.length ? `blocking: ${aeoBlock.map((f) => f.check).join(', ')}` : 'all blocking checks pass' });
+    await emit({ layer: 'aeo', ok: aeoBlock.length === 0, note: aeoBlock.length ? `blocking: ${aeoBlock.map((f) => f.check).join(', ')}` : 'all blocking checks pass' });
   }
 
   // ── guardrails (refuse-and-flag; BAD blocks) ──────────────────────────────
@@ -240,12 +244,12 @@ export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResu
     carried: ground.provenanceFlags,
   });
   const guardrailBlocked = hasBlockingFlag(guardrailFlags);
-  log.push({ layer: 'guardrails', ok: !guardrailBlocked, note: `${guardrailFlags.length} flags${guardrailBlocked ? ' (BAD present - blocks)' : ''}` });
+  await emit({ layer: 'guardrails', ok: !guardrailBlocked, note: `${guardrailFlags.length} flags${guardrailBlocked ? ' (BAD present - blocks)' : ''}` });
 
   // ── gates (one repair round) ──────────────────────────────────────────────
   const gateResult = runGates(draft, brand, window);
   draft = gateResult.draft; // use repaired draft downstream
-  log.push({ layer: 'gates', ok: gateResult.violations.length === 0, note: `${gateResult.violations.length} violations after ${gateResult.repaired ? 1 : 0} repair round` });
+  await emit({ layer: 'gates', ok: gateResult.violations.length === 0, note: `${gateResult.violations.length} violations after ${gateResult.repaired ? 1 : 0} repair round` });
 
   // ── verify (gate to completion; up to 2 attempts) ─────────────────────────
   let verdict: EngineVerdict = await deps.verifier.verify(draft, ground.facts);
@@ -259,7 +263,7 @@ export async function runProductRewrite(opts: RunOptions): Promise<EngineRunResu
   const independentOk = deps.verifier.mode === 'independent' || !runConfig.groundedness;
   const verifierSatisfiesPass =
     verdict.verdict === 'pass' && deps.verifier.mode === 'independent';
-  log.push({
+  await emit({
     layer: 'verify',
     ok: verdict.verdict === 'pass',
     note: `verdict=${verdict.verdict} mode=${verdict.mode} attempts=${attempts}${verdict.verdict === 'pass' && verdict.mode === 'self-check' ? ' (self-check never satisfies PASS)' : ''}`,
@@ -343,6 +347,8 @@ export type ArticleRunOptions = {
   /** external sources the drafter may cite (offline fixture; live = web search). */
   sources?: ArticleSource[];
   seedTerms?: string[];
+  /** fires after each layer completes, for live progress streaming. */
+  onProgress?: (stage: StageLog) => void | Promise<void>;
 };
 
 function articleDepthToWindow(depth: RunConfig['depth']): { min: number; max: number } {
@@ -405,6 +411,8 @@ function articleHardStop(
 export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResult> {
   const { topic, brand, catalogIndex, runConfig, deps } = opts;
   const log: StageLog[] = [];
+  // record a stage AND stream it live (onProgress failures never break the run).
+  const emit = async (s: StageLog) => { log[log.length] = s; try { await opts.onProgress?.(s); } catch { /* progress is best-effort */ } };
   const country = 'US';
 
   // ── ground (article; HARD STOP on unconfirmed brand) ──────────────────────
@@ -419,28 +427,28 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
     });
   } catch (e) {
     if (e instanceof BrandUnconfirmedError) {
-      log.push({ layer: 'ground', ok: false, note: e.message });
+      await emit({ layer: 'ground', ok: false, note: e.message });
       return articleHardStop(topic, e.message, log, null);
     }
     throw e;
   }
   const groundView: GroundResult = { ...ground, product: ground.pseudoProduct };
-  log.push({ layer: 'ground', ok: true, note: `${ground.facts.length} internal facts, ${ground.gaps.length} gaps` });
+  await emit({ layer: 'ground', ok: true, note: `${ground.facts.length} internal facts, ${ground.gaps.length} gaps` });
 
   // ── research ──────────────────────────────────────────────────────────────
   const seedTerms = opts.seedTerms ?? [topic, ...brand.seedTerms];
   const candidates = await deps.research.keywords(seedTerms, country);
   validateResearch(candidates);
-  log.push({ layer: 'research', ok: true, note: `${candidates.length} raw candidates` });
+  await emit({ layer: 'research', ok: true, note: `${candidates.length} raw candidates` });
 
   // ── filter (article mode: keep head/informational; drop PLP/SKU/competitor) ─
   const filtered = filterKeywords(candidates, catalogIndex, ground.pseudoProduct, opts.filterConfig ?? EZ_FABRIC_FILTER_CONFIG, 'article');
-  log.push({ layer: 'filter', ok: true, note: `${filtered.kept.length} kept, ${filtered.dropped.length} dropped/routed` });
+  await emit({ layer: 'filter', ok: true, note: `${filtered.kept.length} kept, ${filtered.dropped.length} dropped/routed` });
 
   // ── serp-ownership ────────────────────────────────────────────────────────
   const topN = Math.min(runConfig.depth === 'deep' ? 16 : 12, filtered.kept.length);
   const serp = await deps.serp.ownership(filtered.kept.slice(0, topN), ground.authority);
-  log.push({ layer: 'serp-ownership', ok: true, note: `${serp.length} verdicts` });
+  await emit({ layer: 'serp-ownership', ok: true, note: `${serp.length} verdicts` });
 
   // ── select (article mode: informational/commercial primary, no variant map) ─
   let selection: Selection;
@@ -448,23 +456,23 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
     selection = selectKeywords(filtered, serp, ground.pseudoProduct, opts.registry, 'article');
   } catch (e) {
     const reason = (e instanceof Error ? e.message : 'keyword selection failed') + ' - needs human review or different seed terms.';
-    log.push({ layer: 'select', ok: false, note: reason });
+    await emit({ layer: 'select', ok: false, note: reason });
     return articleHardStop(topic, reason, log, ground);
   }
   const keywords = [selection.primary.candidate.keyword, ...selection.secondaries.map((s) => s.candidate.keyword)];
-  log.push({ layer: 'select', ok: true, note: `primary="${selection.primary.candidate.keyword}", ${selection.secondaries.length} secondaries, history=${selection.historyDecision}` });
+  await emit({ layer: 'select', ok: true, note: `primary="${selection.primary.candidate.keyword}", ${selection.secondaries.length} secondaries, history=${selection.historyDecision}` });
 
   // ── angle (toggle) ────────────────────────────────────────────────────────
   let angleSet: AngleSet;
   if (runConfig.layers.angle) {
     angleSet = await deps.angle.angles(brand, selection.primary.candidate.keyword, serp);
     const v = validateAngle(angleSet);
-    log.push({ layer: 'angle', ok: v.ok, note: v.ok ? `chosen: "${angleSet.chosen.headline}"` : `weak angle: ${v.issue} (proceeding with chosen)` });
+    await emit({ layer: 'angle', ok: v.ok, note: v.ok ? `chosen: "${angleSet.chosen.headline}"` : `weak angle: ${v.issue} (proceeding with chosen)` });
   } else {
     const headline = selection.primary.candidate.keyword.replace(/\b\w/g, (c) => c.toUpperCase());
     const chosen: Angle = { lens: 'buyer-decision', headline, why: 'angle layer off; derived from primary keyword' };
     angleSet = { angles: [chosen], chosen, why: 'angle layer off' };
-    log.push({ layer: 'angle', ok: true, note: 'angle layer off (derived from primary)' });
+    await emit({ layer: 'angle', ok: true, note: 'angle layer off (derived from primary)' });
   }
 
   // ── outline + critic (ENFORCED loop; never draft on a failing outline) ─────
@@ -472,13 +480,13 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
   const loop = await runOutlineLoop(deps.outline, deps.critic, angleSet.chosen, keywords, window, serp, 3);
   if (loop.status === 'fail') {
     const reason = `outline failed critic after ${loop.rounds} rounds: ${loop.issues.join('; ')}`;
-    log.push({ layer: 'outline+critic', ok: false, note: reason });
+    await emit({ layer: 'outline+critic', ok: false, note: reason });
     const hs = articleHardStop(topic, reason, log, ground);
     hs.angle = angleSet;
     return hs; // HARD STOP: never draft on a failing outline
   }
   const outline = loop.outline;
-  log.push({ layer: 'outline+critic', ok: true, note: `passed in ${loop.rounds} round(s), ${outline.sections.length} sections` });
+  await emit({ layer: 'outline+critic', ok: true, note: `passed in ${loop.rounds} round(s), ${outline.sections.length} sections` });
 
   // ── draft ─────────────────────────────────────────────────────────────────
   let articleDraft = await deps.drafter.draft({
@@ -489,7 +497,7 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
     sources: opts.sources,
   });
   let pieceDraft: PieceDraft = { html: articleDraft.html, meta: articleDraft.meta, jsonld: articleDraft.jsonld, variantMap: [], rewriterId: articleDraft.drafterId };
-  log.push({ layer: 'draft', ok: true, note: `drafter=${articleDraft.drafterId}, ${wordCount(pieceDraft.html)} words, ${articleDraft.citations.length} citations` });
+  await emit({ layer: 'draft', ok: true, note: `drafter=${articleDraft.drafterId}, ${wordCount(pieceDraft.html)} words, ${articleDraft.citations.length} citations` });
 
   // ── citation-verify (toggle; blocking; one re-draft round) ────────────────
   let citationVerdicts: CitationVerdict[] = [];
@@ -502,7 +510,7 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
       citationVerdicts = await verifyCitations(articleDraft.citations, deps.citationChecker);
     }
     const failed = failedCitations(citationVerdicts);
-    log.push({ layer: 'citation-verify', ok: failed.length === 0, note: failed.length ? `${failed.length} failing citation(s): ${failed.map((f) => f.citation.url).join(', ')}` : `${citationVerdicts.length} citations verified` });
+    await emit({ layer: 'citation-verify', ok: failed.length === 0, note: failed.length ? `${failed.length} failing citation(s): ${failed.map((f) => f.citation.url).join(', ')}` : `${citationVerdicts.length} citations verified` });
   }
   const citationBlocked = citationsBlocking(citationVerdicts);
 
@@ -511,19 +519,19 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
   if (runConfig.layers.aeo) {
     aeo = aeoCheck(pieceDraft, ground.facts, selection.primary.candidate.keyword, 'article');
     const aeoBlock = aeoBlockingFailures(aeo);
-    log.push({ layer: 'aeo', ok: aeoBlock.length === 0, note: aeoBlock.length ? `blocking: ${aeoBlock.map((f) => f.check).join(', ')}` : 'all blocking checks pass' });
+    await emit({ layer: 'aeo', ok: aeoBlock.length === 0, note: aeoBlock.length ? `blocking: ${aeoBlock.map((f) => f.check).join(', ')}` : 'all blocking checks pass' });
   }
 
   // ── guardrails ────────────────────────────────────────────────────────────
   const guardrailFlags = guardrails({ draft: pieceDraft, facts: ground.facts, brand, gaps: ground.gaps, selection, carried: ground.provenanceFlags });
   const guardrailBlocked = hasBlockingFlag(guardrailFlags);
-  log.push({ layer: 'guardrails', ok: !guardrailBlocked, note: `${guardrailFlags.length} flags${guardrailBlocked ? ' (BAD present - blocks)' : ''}` });
+  await emit({ layer: 'guardrails', ok: !guardrailBlocked, note: `${guardrailFlags.length} flags${guardrailBlocked ? ' (BAD present - blocks)' : ''}` });
 
   // ── gates (one repair round) ──────────────────────────────────────────────
   const gateResult = runGates(pieceDraft, brand, window);
   pieceDraft = gateResult.draft;
   articleDraft = { ...articleDraft, html: pieceDraft.html, meta: pieceDraft.meta, jsonld: pieceDraft.jsonld };
-  log.push({ layer: 'gates', ok: gateResult.violations.length === 0, note: `${gateResult.violations.length} violations after ${gateResult.repaired ? 1 : 0} repair round` });
+  await emit({ layer: 'gates', ok: gateResult.violations.length === 0, note: `${gateResult.violations.length} violations after ${gateResult.repaired ? 1 : 0} repair round` });
 
   // ── verify (article; gate to completion; up to 2 attempts) ────────────────
   let verdict = await deps.verifier.verify(pieceDraft, ground.facts, articleDraft.citations, citationVerdicts);
@@ -533,7 +541,7 @@ export async function runArticle(opts: ArticleRunOptions): Promise<EngineRunResu
     attempts = 2;
   }
   const verifierSatisfiesPass = verdict.verdict === 'pass' && deps.verifier.mode === 'independent';
-  log.push({ layer: 'verify', ok: verdict.verdict === 'pass', note: `verdict=${verdict.verdict} mode=${verdict.mode} attempts=${attempts}` });
+  await emit({ layer: 'verify', ok: verdict.verdict === 'pass', note: `verdict=${verdict.verdict} mode=${verdict.mode} attempts=${attempts}` });
 
   // ── status ────────────────────────────────────────────────────────────────
   const blocking =

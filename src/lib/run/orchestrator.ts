@@ -139,8 +139,12 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
       // research targets THIS product, not the same brand-level terms every time.
       const seedTerms = [pp.title, pp.productType, ...brand.seedTerms.slice(0, 3)]
         .filter((s): s is string => !!s && s.length > 2);
-      await appendRunLog(opts.runId, "piece", `Researching and rewriting: ${title}`);
-      const res = await runProductRewrite({ product, brand, catalogIndex, runConfig: rc, deps, seedTerms });
+      await appendRunLog(opts.runId, "piece", `Working on: ${title}`);
+      const res = await runProductRewrite({
+        product, brand, catalogIndex, runConfig: rc, deps, seedTerms,
+        // stream each engine layer into the run log as it completes (live chain-of-thought)
+        onProgress: (s) => appendRunLog(opts.runId, "stage", `${s.layer}${s.note ? `: ${s.note}` : ""}`),
+      });
       spend += EST_USD_PER_PIECE;
       const r = res.result;
       const isFlagged = res.haltReason != null || r.status === "flagged";
