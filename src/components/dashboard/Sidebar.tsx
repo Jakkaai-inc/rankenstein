@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ClipboardCheck, Package, FileText, Settings, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, Package, FileText, Settings, ArrowLeft, Target } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ export default function Sidebar({ slug, counts }: Props) {
     { href: `${base}/review`, label: "Review", Icon: ClipboardCheck, badge: counts.pending || undefined },
     { href: `${base}/products`, label: "Products", Icon: Package, badge: counts.products || undefined },
     { href: `${base}/articles`, label: "Articles", Icon: FileText },
+    { href: `${base}/quality`, label: "Quality goal", Icon: Target },
     { href: `${base}/settings`, label: "Settings", Icon: Settings },
   ];
 

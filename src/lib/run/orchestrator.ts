@@ -15,6 +15,7 @@ import {
 } from "@/lib/engine";
 import type { BrandProfile, RunConfig as EngineRunConfig } from "@/lib/engine/types";
 import { prisma } from "@/lib/db";
+import { toChecklistConfig, type RunConfigRow } from "./config";
 
 // Rough per-piece cost estimate (strong rewrite + fast research/serp/verify) for
 // the spend soft-stop. Real usage metering is a later upgrade.
@@ -77,6 +78,18 @@ function engineRunConfig(over?: Partial<EngineRunConfig>): EngineRunConfig {
   return { ...DEFAULT_RUN_CONFIG, ...over };
 }
 
+/** Load the project's saved "Default" RunConfig (set on the Quality goal page)
+ *  as an engine config override. contentType is forced to match the run kind so
+ *  a product run never inherits an "article" content type (and vice-versa). */
+async function loadSavedRunConfig(
+  projectId: string,
+  contentType: "product" | "article",
+): Promise<Partial<EngineRunConfig>> {
+  const row = await prisma.runConfig.findFirst({ where: { projectId, name: "Default" } });
+  if (!row) return { contentType };
+  return { ...toChecklistConfig(row as unknown as RunConfigRow), contentType };
+}
+
 export interface RunBatchOptions {
   projectId: string;
   runId: string;
@@ -95,7 +108,7 @@ export async function runCatalogRewrite(opts: RunBatchOptions): Promise<{ done: 
   if (!project.brandProfile?.confirmed) throw new Error("brand profile must be confirmed before a run");
 
   const brand = toEngineBrand(project.brandProfile, project.siteUrl.replace(/^https?:\/\//, ""));
-  const rc = engineRunConfig(opts.runConfig);
+  const rc = engineRunConfig(opts.runConfig ?? (await loadSavedRunConfig(opts.projectId, "product")));
   const deps = liveDeps({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   // Pull a wide pool for grounding + catalog index; the batch limit is applied
@@ -207,7 +220,10 @@ export async function runArticleBatch(opts: ArticleBatchOptions): Promise<{ done
   if (!project.brandProfile?.confirmed) throw new Error("brand profile must be confirmed before a run");
 
   const brand = toEngineBrand(project.brandProfile, project.siteUrl.replace(/^https?:\/\//, ""));
-  const rc = { ...DEFAULT_ARTICLE_RUN_CONFIG, ...opts.runConfig } as EngineRunConfig;
+  const rc = {
+    ...DEFAULT_ARTICLE_RUN_CONFIG,
+    ...(opts.runConfig ?? (await loadSavedRunConfig(opts.projectId, "article"))),
+  } as EngineRunConfig;
   const deps = liveArticleDeps({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   // Catalog grounds the article (relatedProducts) and feeds the cannibalization
