@@ -7,6 +7,7 @@
 // Hyphens only (em-dash rule applies to review chrome).
 
 import type { ContentBrief } from "@/types/contracts";
+import { Badge } from "@/components/ui/badge";
 
 function fmt(n: number | null): string {
   return n === null || n === undefined ? "n/a" : n.toLocaleString();
@@ -48,14 +49,14 @@ export default function BriefPanel({ brief }: { brief: ContentBrief | null }) {
                 <td className="border-b py-1 pr-2 font-medium">{primary.keyword}</td>
                 <td className="border-b py-1 pr-2 text-right tabular-nums">{fmt(primary.volume)}</td>
                 <td className="border-b py-1 pr-2 text-right tabular-nums">{fmt(primary.kd)}</td>
-                <td className="border-b py-1"><span className="rounded bg-[#b5651d] px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Primary</span></td>
+                <td className="border-b py-1"><Badge className="text-[10px] uppercase">Primary</Badge></td>
               </tr>
               {secondaries.map((s, i) => (
                 <tr key={i}>
                   <td className="border-b py-1 pr-2">{s.keyword}</td>
                   <td className="border-b py-1 pr-2 text-right tabular-nums">{fmt(s.volume)}</td>
                   <td className="border-b py-1 pr-2 text-right tabular-nums">-</td>
-                  <td className="border-b py-1"><span className="rounded bg-[#ede7dc] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[#6b5836]">Secondary</span></td>
+                  <td className="border-b py-1"><Badge variant="secondary" className="text-[10px] uppercase">Secondary</Badge></td>
                 </tr>
               ))}
             </tbody>

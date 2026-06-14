@@ -16,6 +16,8 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import type { ContentBrief, CommentAnchor, GuardrailFlag, ReviewComment, VerifierVerdict } from "@/types/contracts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import PiecePreview, { type NewCommentInput, type PiecePreviewMeta } from "./PiecePreview";
 import BriefPanel from "./BriefPanel";
 import type { VersionContent } from "@/app/review/actions";
@@ -189,7 +191,7 @@ export default function ReviewShell(props: Props) {
         <label className="text-muted-foreground flex items-center gap-2 text-sm">
           Version
           <select
-            className="rounded-md border bg-white px-2 py-1 text-sm"
+            className="border-input bg-background h-8 rounded-md border px-2 text-sm"
             value={selected}
             disabled={frozen}
             onChange={(e) => onSelectVersion(Number(e.target.value))}
@@ -204,10 +206,10 @@ export default function ReviewShell(props: Props) {
         </label>
         {loadingVersion && <span className="text-muted-foreground text-xs">loading…</span>}
         {!onLatest && (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+          <Badge variant="warning">
             viewing v{selected} (read-only) ·{" "}
             <button type="button" className="underline" onClick={() => onSelectVersion(latestVersion)}>jump to latest</button>
-          </span>
+          </Badge>
         )}
 
         <span className="flex-1" />
@@ -215,33 +217,27 @@ export default function ReviewShell(props: Props) {
         {/* Primary CTA depends on state */}
         {onLatest && !approved && !published && (
           openComments > 0 ? (
-            <button
-              type="button"
-              onClick={sendFeedback}
-              disabled={frozen}
-              className="rounded-md bg-[#b5651d] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
+            <Button onClick={sendFeedback} disabled={frozen}>
               {frozen ? "Rewriting…" : `Send feedback (${openComments})`}
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
+            <Button
               onClick={doApprove}
               disabled={frozen || loadingVersion}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600/90 disabled:opacity-50"
+              className="bg-emerald-600 text-primary-foreground hover:bg-emerald-600/90"
             >
               Approve to publish
-            </button>
+            </Button>
           )
         )}
 
         {onLatest && approved && props.publishToStore && (
-          <button type="button" onClick={doPublish} disabled={publishing} className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          <Button onClick={doPublish} disabled={publishing}>
             {publishing ? "Publishing…" : "Publish to store"}
-          </button>
+          </Button>
         )}
-        {approved && !published && <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">approved</span>}
-        {published && <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">published</span>}
+        {approved && !published && <Badge variant="success">approved</Badge>}
+        {published && <Badge variant="info">published</Badge>}
       </div>
 
       {/* Hint only on the latest editable version */}
@@ -262,7 +258,7 @@ export default function ReviewShell(props: Props) {
 
       {/* Per-comment outcome: every comment's fate, so nothing silently no-ops. */}
       {outcomeEdits && outcomeEdits.length > 0 && (
-        <div className="space-y-2 rounded-lg border bg-white p-3 text-sm">
+        <div className="bg-card space-y-2 rounded-lg border p-3 text-sm">
           <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
             Feedback results · {outcomeEdits.filter((e) => e.changed).length} of {outcomeEdits.length} changed
           </div>
@@ -280,7 +276,7 @@ export default function ReviewShell(props: Props) {
                   <div className="mt-1 rounded bg-green-50 px-1.5 py-1 text-green-900">{e.after || "(removed)"}</div>
                 </>
               ) : (
-                <div className="text-gray-600">{`"${e.before.length > 90 ? e.before.slice(0, 89) + "…" : e.before}"`}</div>
+                <div className="text-muted-foreground">{`"${e.before.length > 90 ? e.before.slice(0, 89) + "…" : e.before}"`}</div>
               )}
             </div>
           ))}
@@ -295,7 +291,7 @@ export default function ReviewShell(props: Props) {
 
       {/* Quality checks — collapsed by default (not reviewer's first concern). */}
       {(verdict || flags.length > 0) && (
-        <div className="rounded-lg border bg-gray-50 text-sm">
+        <div className="bg-muted/40 rounded-lg border text-sm">
           <button type="button" className="flex w-full items-center justify-between px-4 py-2 text-left" onClick={() => setShowChecks((s) => !s)}>
             <span className="font-medium">Quality checks{flags.some((f) => f.severity === "BAD") ? " · needs attention" : ""}</span>
             <span className="text-muted-foreground text-xs">{showChecks ? "hide" : "show"}</span>
@@ -308,7 +304,7 @@ export default function ReviewShell(props: Props) {
               {flags.map((f, i) => (
                 <div key={i} className={`rounded border-l-4 px-3 py-1.5 ${f.severity === "BAD" ? "border-red-400 bg-red-50" : f.severity === "GOOD" ? "border-green-400 bg-green-50" : "border-amber-400 bg-amber-50"}`}>
                   <b className="text-xs uppercase">{f.type}</b>
-                  <div className="text-gray-700">{f.note}</div>
+                  <div className="text-foreground">{f.note}</div>
                 </div>
               ))}
             </div>
@@ -323,7 +319,7 @@ export default function ReviewShell(props: Props) {
       <div className={frozen ? "pointer-events-none relative opacity-60" : "relative"}>
         {frozen && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <div className="rounded-lg bg-white/90 px-4 py-3 text-sm font-medium shadow">Rewriting the commented spans…</div>
+            <div className="bg-card/90 rounded-lg px-4 py-3 text-sm font-medium shadow">Rewriting the commented spans…</div>
           </div>
         )}
         <PiecePreview

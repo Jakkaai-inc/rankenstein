@@ -259,19 +259,23 @@ export default function PiecePreview({ pieceId, version, html, meta, comments, a
   );
 }
 
-// Scoped styling. The .rk-piece block mirrors the engine preview chrome
-// (hyphens only — em-dash rule applies to UI), so the canvas reads like the
-// published page.
+// Scoped styling. The CHROME (meta fields, comment rail, cards, composer,
+// buttons) is mapped onto the app's design tokens (radix-luma oklch). The
+// .rk-piece block is the rendered piece itself — it keeps mirroring
+// inputs/reference-output-minky-preview.html (the published-page look + the warm
+// content highlight), so the generated content reads exactly as it will publish.
+// Voice (purple) and recording (red) stay as functional state accents.
+// Hyphens only — em-dash rule applies to UI.
 const PIECE_CSS = `
-.rk-review{--ink:#1a1a1a;--mut:#6b6b6b;--line:#e6e3dd;--accent:#b5651d;--good:#2e7d32;}
+.rk-review{--ink:var(--foreground);--mut:var(--muted-foreground);--line:var(--border);--accent:var(--primary);}
 .rk-meta{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
-.rk-field{display:flex;gap:10px;align-items:baseline;text-align:left;background:#faf9f6;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .12s}
+.rk-field{display:flex;gap:10px;align-items:baseline;text-align:left;background:var(--muted);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .12s}
 .rk-field:hover:not(:disabled){border-color:var(--accent)}
 .rk-field:disabled{cursor:default;opacity:.8}
 .rk-field-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);min-width:120px}
 .rk-field-value{font-size:14px;color:var(--ink)}
-.rk-piece-frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
-.rk-piece-hint{font-size:12px;color:var(--mut);background:#faf9f6;border-bottom:1px solid var(--line);padding:8px 18px}
+.rk-piece-frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.rk-piece-hint{font-size:12px;color:var(--mut);background:var(--muted);border-bottom:1px solid var(--line);padding:8px 18px}
 .rk-piece{padding:8px 26px 26px;color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
 .rk-piece h1{font-size:25px;margin:18px 0 6px}
 .rk-piece h2{font-size:19px;margin:26px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line)}
@@ -283,23 +287,23 @@ const PIECE_CSS = `
 .rk-piece ::selection{background:#f6e2cd}
 .rk-rail{align-self:start;position:sticky;top:16px}
 .rk-rail-h{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:0 0 10px}
-.rk-rail-sec{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#9a9a9a;margin:14px 0 6px}
+.rk-rail-sec{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:14px 0 6px}
 .rk-empty{font-size:13px;color:var(--mut)}
-.rk-card{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 11px;margin-bottom:8px;background:#fff}
+.rk-card{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 11px;margin-bottom:8px;background:var(--card)}
 .rk-card.voice{border-left-color:#5b3fa0}
 .rk-quote{font-size:12px;color:var(--mut);font-style:italic;margin-bottom:3px}
 .rk-lost{color:var(--accent);font-style:normal;font-weight:600}
 .rk-body{font-size:14px;color:var(--ink);white-space:pre-wrap}
-.rk-composer{position:absolute;z-index:50;width:300px;background:#fff;border:1px solid #d9d4ca;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.16);padding:10px}
+.rk-composer{position:absolute;z-index:50;width:300px;background:var(--popover);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.16);padding:10px}
 .rk-composer-anchor{font-size:12px;color:var(--mut);font-style:italic;margin-bottom:6px;max-height:34px;overflow:hidden}
-.rk-composer-text{width:100%;min-height:62px;border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:14px/1.5 inherit;resize:vertical;box-sizing:border-box}
+.rk-composer-text{width:100%;min-height:62px;border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:14px/1.5 inherit;resize:vertical;box-sizing:border-box;background:var(--background);color:var(--ink)}
 .rk-composer-hint{font-size:11px;color:var(--mut);margin-top:5px;line-height:1.4}
 .rk-composer-actions{display:flex;align-items:center;gap:7px;margin-top:8px}
 .rk-spacer{flex:1}
 .rk-btn{border-radius:7px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent}
-.rk-primary{background:var(--accent);color:#fff}
+.rk-primary{background:var(--accent);color:var(--primary-foreground)}
 .rk-primary:disabled{opacity:.5;cursor:default}
-.rk-ghost{background:#fff;border-color:var(--line);color:#4a4a4a}
+.rk-ghost{background:var(--background);border-color:var(--line);color:var(--foreground)}
 .rk-voice{background:#efe9f7;color:#5b3fa0;border-color:#d9cdee}
 .rk-rec{background:#fbe5e3;color:#b3261e;border-color:#f0c4bf;animation:rkpulse 1.1s infinite}
 @keyframes rkpulse{0%,100%{opacity:1}50%{opacity:.55}}
