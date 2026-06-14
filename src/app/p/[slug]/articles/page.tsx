@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { runArticles } from "@/app/actions";
+import { CalendarPlus } from "lucide-react";
+
+import { runArticles, planContentCalendar } from "@/app/actions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
@@ -63,11 +64,19 @@ export default async function ArticlesPage({ params }: { params: Promise<{ slug:
           <h1 className="text-xl font-bold">Articles</h1>
           <p className="text-muted-foreground text-sm">Your content calendar and the articles Rankenstein has drafted.</p>
         </div>
-        <form action={runArticles}>
-          <input type="hidden" name="projectId" value={project.id} />
-          <input type="hidden" name="limit" value="2" />
-          <Button type="submit" variant="outline">Generate from seed topics</Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <form action={planContentCalendar}>
+            <input type="hidden" name="projectId" value={project.id} />
+            <input type="hidden" name="goals" value="create_articles" />
+            <input type="hidden" name="count" value="8" />
+            <Button type="submit"><CalendarPlus className="size-4" /> {planned.length > 0 ? "Add to calendar" : "Plan content calendar"}</Button>
+          </form>
+          <form action={runArticles}>
+            <input type="hidden" name="projectId" value={project.id} />
+            <input type="hidden" name="limit" value="2" />
+            <Button type="submit" variant="outline">Generate from seed topics</Button>
+          </form>
+        </div>
       </div>
 
       <ContentCalendar planned={planned} />
@@ -78,8 +87,15 @@ export default async function ArticlesPage({ params }: { params: Promise<{ slug:
           <ContentTable slug={slug} rows={rows} />
         </div>
       ) : planned.length === 0 ? (
-        <div className="bg-card text-muted-foreground rounded-xl border p-8 text-center text-sm">
-          No articles yet. Build a content calendar from the project overview, or <Link href={`/p/${slug}/overview`} className="text-primary underline">generate a batch</Link>.
+        <div className="bg-card rounded-xl border p-10 text-center">
+          <p className="text-sm font-medium">No content calendar yet</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">Rankenstein proposes article topics from your brand&apos;s seed topics, scheduled weekly. Then draft any of them with one click.</p>
+          <form action={planContentCalendar} className="mt-4 flex justify-center">
+            <input type="hidden" name="projectId" value={project.id} />
+            <input type="hidden" name="goals" value="create_articles" />
+            <input type="hidden" name="count" value="8" />
+            <Button type="submit"><CalendarPlus className="size-4" /> Plan content calendar</Button>
+          </form>
         </div>
       ) : null}
     </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ExternalLink, Plug, BadgeCheck, Package, ClipboardList, CheckCircle2, Rocket } from "lucide-react";
+import { ExternalLink, Plug, BadgeCheck, Package, ClipboardList, CheckCircle2, Rocket, CalendarDays } from "lucide-react";
 
 import OverviewActions from "@/components/dashboard/OverviewActions";
 import { prisma } from "@/lib/db";
@@ -51,6 +51,15 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
     orderBy: { publishedAt: "desc" }, take: 10,
     select: { id: true, title: true, publishedUrl: true, publishedAt: true, primaryKeyword: true },
   });
+
+  const plannedRaw = await prisma.contentItem.findMany({
+    where: { projectId: project.id, kind: "ARTICLE", status: "DRAFTING" },
+    select: { id: true, title: true, primaryKeyword: true, brief: true },
+  });
+  const upcoming = plannedRaw
+    .map((it) => { const b = (it.brief ?? {}) as { scheduledFor?: string }; return { id: it.id, title: it.title ?? "Untitled", keyword: it.primaryKeyword, scheduledFor: b.scheduledFor ?? null }; })
+    .sort((a, b) => (a.scheduledFor ?? "").localeCompare(b.scheduledFor ?? ""))
+    .slice(0, 5);
 
   const totalPieces = grouped.reduce((n, g) => n + g._count, 0);
   const fresh = totalPieces === 0 && (full?.runs.length ?? 0) === 0;
@@ -108,6 +117,33 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
                     <div className="text-muted-foreground truncate text-xs">{it.primaryKeyword}{it.publishedAt ? ` · ${it.publishedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}</div>
                   </div>
                   <Button variant="outline" size="sm" asChild><a href={it.publishedUrl!} target="_blank" rel="noreferrer">View live <ExternalLink className="size-3.5" /></a></Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex-row items-center justify-between border-b py-3">
+          <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="text-primary size-4" /> Content calendar</CardTitle>
+          <Link href={`${base}/articles`} className="text-primary text-sm hover:underline">Open calendar →</Link>
+        </CardHeader>
+        <CardContent className="px-0">
+          {upcoming.length === 0 ? (
+            <p className="text-muted-foreground px-6 py-6 text-sm">
+              No planned articles yet.{" "}
+              {ready && <Link href={`${base}/articles`} className="text-primary underline">Plan your content calendar →</Link>}
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {upcoming.map((u) => (
+                <li key={u.id} className="flex items-center justify-between gap-4 px-6 py-2.5">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{u.title}</div>
+                    <div className="text-muted-foreground truncate text-xs">{u.keyword ?? ""}</div>
+                  </div>
+                  <span className="text-muted-foreground shrink-0 text-xs">{u.scheduledFor ? new Date(u.scheduledFor).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—"}</span>
                 </li>
               ))}
             </ul>

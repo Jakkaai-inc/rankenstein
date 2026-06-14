@@ -133,7 +133,9 @@ export async function getRunProgress(projectId: string, runId: string): Promise<
 export async function getActiveRun(projectId: string): Promise<{ runId: string } | null> {
   const account = await requireAccount();
   const run = await prisma.run.findFirst({
-    where: { projectId, project: { accountId: account.id }, status: { in: ["QUEUED", "RUNNING"] } },
+    // ignore stale/orphaned runs (a real run finishes in ~1 min) so a stuck RUNNING
+    // row can't make the dashboard show a phantom "Generating…" forever.
+    where: { projectId, project: { accountId: account.id }, status: { in: ["QUEUED", "RUNNING"] }, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
     orderBy: { createdAt: "desc" },
   });
   return run ? { runId: run.id } : null;
