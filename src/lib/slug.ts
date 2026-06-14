@@ -27,11 +27,19 @@ export function deriveSlug(p: SluggableProject): string {
   return slugify(p.siteUrl) || slugify(p.name);
 }
 
-/** Resolve a slug to a project owned by the account (matches the derived slug). */
+/** Resolve a slug to a project owned by the account (matches the derived slug).
+ *  DETERMINISTIC: a findMany without orderBy returns rows in arbitrary order, so
+ *  when duplicate projects share a slug, different requests could resolve to
+ *  different rows (page -> the rich project, an action -> an empty dupe ->
+ *  NOT_FOUND). We sort all slug matches and prefer the one with the most content
+ *  (then oldest) so every request lands on the same canonical project. */
 export async function findProjectBySlug(accountId: string, slug: string) {
   const projects = await prisma.project.findMany({
     where: { accountId },
-    include: { shopify: { select: { shopDomain: true } } },
+    include: { shopify: { select: { shopDomain: true } }, _count: { select: { pieces: true } } },
   });
-  return projects.find((p) => deriveSlug(p) === slug) ?? null;
+  const matches = projects.filter((p) => deriveSlug(p) === slug);
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => b._count.pieces - a._count.pieces || +a.createdAt - +b.createdAt);
+  return matches[0];
 }
