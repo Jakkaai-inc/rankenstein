@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Search } from "lucide-react";
 
 import { StatusBadge } from "./StatusBadge";
+import { TablePager } from "./TablePager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,8 @@ export default function ProductsTable({ slug, projectId, rows }: { slug: string;
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("ALL");
   const [openHandle, setOpenHandle] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -47,6 +50,12 @@ export default function ProductsTable({ slug, projectId, rows }: { slug: string;
       return (r.title + " " + r.handle + " " + (r.primaryKeyword ?? "")).toLowerCase().includes(needle);
     });
   }, [rows, q, filter]);
+
+  useEffect(() => setPage(1), [q, filter]); // reset to first page when the result set changes
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const open = rows.find((r) => r.handle === openHandle) ?? null;
 
@@ -76,7 +85,7 @@ export default function ProductsTable({ slug, projectId, rows }: { slug: string;
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.slice(0, 400).map((r) => (
+            {pageRows.map((r) => (
               <TableRow key={r.handle} onClick={() => setOpenHandle(r.handle)} className="cursor-pointer">
                 <TableCell>
                   <div className="font-medium">{r.title}</div>
@@ -90,8 +99,9 @@ export default function ProductsTable({ slug, projectId, rows }: { slug: string;
             {filtered.length === 0 && <TableRow><TableCell colSpan={4} className="text-muted-foreground py-8 text-center">No products match.</TableCell></TableRow>}
           </TableBody>
         </Table>
-        {filtered.length > 400 && <div className="text-muted-foreground border-t px-4 py-2 text-center text-xs">Showing first 400 — refine your search.</div>}
       </div>
+
+      <TablePager page={safePage} pageCount={pageCount} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />
 
       <Sheet open={!!open} onOpenChange={(o) => !o && setOpenHandle(null)}>
         <SheetContent className="overflow-y-auto sm:max-w-3xl">

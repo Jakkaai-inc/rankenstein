@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Search } from "lucide-react";
 
 import { StatusBadge } from "./StatusBadge";
+import { TablePager } from "./TablePager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,8 @@ export default function ContentTable({ slug, rows }: { slug: string; rows: Conte
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("ALL");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -43,6 +46,12 @@ export default function ContentTable({ slug, rows }: { slug: string; rows: Conte
       return (r.title + " " + (r.primaryKeyword ?? "") + " " + (r.sourceRef ?? "")).toLowerCase().includes(needle);
     });
   }, [rows, q, filter]);
+
+  useEffect(() => setPage(1), [q, filter]); // reset to first page when the result set changes
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const open = rows.find((r) => r.id === openId) ?? null;
 
@@ -74,7 +83,7 @@ export default function ContentTable({ slug, rows }: { slug: string; rows: Conte
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((r) => (
+            {pageRows.map((r) => (
               <TableRow key={r.id} onClick={() => setOpenId(r.id)} className="cursor-pointer">
                 <TableCell className="font-medium">{r.title}</TableCell>
                 <TableCell><StatusBadge status={r.status} /></TableCell>
@@ -88,6 +97,8 @@ export default function ContentTable({ slug, rows }: { slug: string; rows: Conte
           </TableBody>
         </Table>
       </div>
+
+      <TablePager page={safePage} pageCount={pageCount} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />
 
       <Sheet open={!!open} onOpenChange={(o) => !o && setOpenId(null)}>
         <SheetContent className="overflow-y-auto sm:max-w-2xl">
