@@ -9,7 +9,78 @@ import { revalidatePath } from "next/cache";
 import { requireAccount } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { deriveSlug } from "@/lib/slug";
+import { createProject as createProjectSvc } from "@/lib/services/projects";
+import { draftBrandForProject, confirmBrand } from "@/lib/services/brand";
 import { adminClient, fetchShopContext, saveConnection, normalizeShopDomain, SHOPIFY_SCOPES } from "@/lib/shopify";
+
+// NOTE: the wizard calls these SERVER ACTIONS (cookie session) rather than the
+// /api/v1 routes, which authenticate via a bearer token (mobile) and would 401
+// a web fetch. Each action authenticates with requireAccount() (cookie).
+
+export type BrandFields = {
+  brandName: string;
+  industry: string;
+  audience: string;
+  voice: string;
+  brandFacts: string;
+  seedTopics: string[];
+  competitors: string[];
+};
+
+export type CreateAndDraftResult =
+  | { ok: true; projectId: string; accessible: boolean; brand: BrandFields }
+  | { ok: false; error: string };
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  }
+}
+
+/** Step 1: create the project + crawl the site for a brand draft (one crawl). */
+export async function createAndDraft(siteUrl: string): Promise<CreateAndDraftResult> {
+  try {
+    const account = await requireAccount();
+    const project = await createProjectSvc(account.id, { name: hostOf(siteUrl) || "New project", siteUrl });
+    const bp = await draftBrandForProject(account.id, project.id);
+    const brand: BrandFields = {
+      brandName: bp.brandName ?? "",
+      industry: bp.industry ?? "",
+      audience: bp.audience ?? "",
+      voice: bp.voice ?? "",
+      brandFacts: bp.brandFacts ?? "",
+      seedTopics: bp.seedTopics ?? [],
+      competitors: bp.competitors ?? [],
+    };
+    const accessible = Boolean(brand.voice || brand.industry || brand.seedTopics.length);
+    return { ok: true, projectId: project.id, accessible, brand };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not read the site" };
+  }
+}
+
+export type ConfirmResult = { ok: true } | { ok: false; error: string };
+
+/** Step 2: confirm the brand (the gate that unlocks generation). */
+export async function confirmBrandStep(projectId: string, fields: BrandFields): Promise<ConfirmResult> {
+  try {
+    const account = await requireAccount();
+    await confirmBrand(account.id, projectId, {
+      brandName: fields.brandName,
+      industry: fields.industry,
+      audience: fields.audience,
+      voice: fields.voice,
+      brandFacts: fields.brandFacts,
+      seedTopics: fields.seedTopics,
+      competitors: fields.competitors,
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not confirm the brand" };
+  }
+}
 
 export type PreconnectResult = {
   connected: boolean;

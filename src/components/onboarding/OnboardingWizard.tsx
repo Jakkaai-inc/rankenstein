@@ -16,23 +16,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Stepper, type StepDef } from "./Stepper";
-import { preconnectDemoStore, type PreconnectResult } from "@/app/p/new/actions";
+import { createAndDraft, confirmBrandStep, preconnectDemoStore, type PreconnectResult, type BrandFields } from "@/app/p/new/actions";
 
 const STEPS: StepDef[] = [
   { key: "site", label: "Your website" },
   { key: "brand", label: "Brand" },
   { key: "store", label: "Shopify" },
 ];
-
-type BrandDraft = {
-  brandName?: string;
-  industry?: string | null;
-  audience?: string | null;
-  voice?: string | null;
-  brandFacts?: string | null;
-  seedTopics?: string[];
-  competitors?: string[];
-};
 
 const THOUGHTS = (host: string) => [
   `Reaching ${host}`,
@@ -48,15 +38,6 @@ function hostOf(url: string): string {
     return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
   } catch {
     return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  }
-}
-
-async function readError(res: Response): Promise<string> {
-  try {
-    const j = await res.json();
-    return j?.error ?? `request failed (${res.status})`;
-  } catch {
-    return `request failed (${res.status})`;
   }
 }
 
@@ -93,7 +74,7 @@ export function OnboardingWizard() {
   const host = siteUrl ? hostOf(siteUrl) : "your site";
   const seedTopics = seedInput.split(",").map((s) => s.trim()).filter(Boolean);
 
-  function applyDraft(b: BrandDraft, host: string) {
+  function applyDraft(b: BrandFields, isAccessible: boolean) {
     setBrandName(b.brandName ?? "");
     setIndustry(b.industry ?? "");
     setAudience(b.audience ?? "");
@@ -101,9 +82,7 @@ export function OnboardingWizard() {
     setBrandFacts(b.brandFacts ?? "");
     setSeedInput((b.seedTopics ?? []).join(", "));
     setCompetitors((b.competitors ?? []).join(", "));
-    // accessible = we actually extracted something beyond a bare name stub
-    setAccessible(Boolean(b.voice || b.industry || (b.seedTopics && b.seedTopics.length)));
-    void host;
+    setAccessible(isAccessible);
   }
 
   async function startFetch() {
@@ -120,22 +99,11 @@ export function OnboardingWizard() {
     setThoughts([lines[0]]);
 
     try {
-      const cRes = await fetch("/api/v1/projects", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: hostOf(siteUrl), siteUrl: siteUrl.trim() }),
-      });
-      if (!cRes.ok) throw new Error(await readError(cRes));
-      const { project } = await cRes.json();
-      const pid: string = project.id;
-      setProjectId(pid);
-
-      const dRes = await fetch(`/api/v1/projects/${pid}/brand/draft`, { method: "POST" });
-      if (!dRes.ok) throw new Error(await readError(dRes));
-      const { brand } = (await dRes.json()) as { brand: BrandDraft };
-      applyDraft(brand ?? {}, host);
-
+      const r = await createAndDraft(siteUrl.trim());
       if (timer.current) clearInterval(timer.current);
+      if (!r.ok) { setRunning(false); setErr(r.error); return; }
+      setProjectId(r.projectId);
+      applyDraft(r.brand, r.accessible);
       setThoughts(lines);
       setRunning(false);
       setStep(1);
@@ -152,21 +120,17 @@ export function OnboardingWizard() {
     setErr(null);
     setConfirming(true);
     try {
-      const res = await fetch(`/api/v1/projects/${projectId}/brand/confirm`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          brandName, industry, audience, voice, brandFacts,
-          seedTopics,
-          competitors: competitors.split(",").map((s) => s.trim()).filter(Boolean),
-        }),
+      const r = await confirmBrandStep(projectId, {
+        brandName, industry, audience, voice, brandFacts,
+        seedTopics,
+        competitors: competitors.split(",").map((s) => s.trim()).filter(Boolean),
       });
-      if (!res.ok) throw new Error(await readError(res));
+      if (!r.ok) { setConfirming(false); setErr(r.error); return; }
       setConfirming(false);
       setStep(2);
       // kick off the demo pre-connect as we land on step 3
-      const r = await preconnectDemoStore(projectId);
-      setPreconnect(r);
+      const pr = await preconnectDemoStore(projectId);
+      setPreconnect(pr);
     } catch (e) {
       setConfirming(false);
       setErr(e instanceof Error ? e.message : "Could not confirm the brand");
