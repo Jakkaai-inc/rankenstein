@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
-import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import ReviewTable, { type ReviewRow } from "@/components/preview/ReviewTable";
 import { Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -20,67 +19,44 @@ export default async function DashboardReview({ params }: { params: Promise<{ sl
   const pieces = await prisma.contentItem.findMany({
     // FAILED pieces are the engine's self-flagged triage cases (verifier failed
     // twice, or a halt). The brief requires they stay VISIBLE for human triage,
-    // never hidden — so they are surfaced in their own section below.
+    // never hidden — the table keeps them with a FAILED status + a "Triage" action.
     where: { projectId: project.id, status: { in: ["PENDING_REVIEW", "CHANGES_REQUESTED", "APPROVED", "PUBLISHED", "FAILED"] } },
     orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
     take: 200,
-    select: { id: true, title: true, kind: true, status: true, primaryKeyword: true, _count: { select: { comments: true } } },
+    select: { id: true, title: true, kind: true, action: true, status: true, primaryKeyword: true, updatedAt: true, _count: { select: { comments: true } } },
   });
 
-  const flagged = pieces.filter((p) => p.status === "FAILED");
-  const pending = pieces.filter((p) => p.status === "PENDING_REVIEW" || p.status === "CHANGES_REQUESTED");
-  const approved = pieces.filter((p) => p.status === "APPROVED");
-  const published = pieces.filter((p) => p.status === "PUBLISHED");
+  const rows: ReviewRow[] = pieces.map((p) => ({
+    id: p.id,
+    title: p.title,
+    kind: p.kind,
+    action: p.action,
+    status: p.status,
+    primaryKeyword: p.primaryKeyword,
+    comments: p._count.comments,
+    updatedAt: p.updatedAt.toISOString(),
+  }));
+
+  const pending = rows.filter((r) => r.status === "PENDING_REVIEW" || r.status === "CHANGES_REQUESTED").length;
+  const approved = rows.filter((r) => r.status === "APPROVED").length;
+  const published = rows.filter((r) => r.status === "PUBLISHED").length;
+  const flagged = rows.filter((r) => r.status === "FAILED").length;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-xl font-bold">Review</h1>
         <p className="text-muted-foreground text-sm">
-          {pending.length} awaiting review · {approved.length} approved · {published.length} live
-          {flagged.length > 0 ? ` · ${flagged.length} flagged for triage` : ""} · nothing publishes without your approval.
+          {pending} awaiting review · {approved} approved · {published} live
+          {flagged > 0 ? ` · ${flagged} flagged for triage` : ""} · nothing publishes without your approval.
         </p>
       </div>
 
-      {pieces.length === 0 && <Card className="border-dashed"><div className="text-muted-foreground p-8 text-center text-sm">Nothing to review yet. Generate a batch from Overview.</div></Card>}
-
-      <Section title="Flagged · needs triage" rows={flagged} slug={slug} subtitle="The engine could not pass these (verifier failed or grounding halt). Open to see the reason; nothing here can publish." />
-      <Section title="Needs review" rows={pending} slug={slug} />
-      <Section title="Approved · ready to publish" rows={approved} slug={slug} />
-      <Section title="Published live" rows={published} slug={slug} />
+      {rows.length === 0 ? (
+        <Card className="border-dashed"><div className="text-muted-foreground p-8 text-center text-sm">Nothing to review yet. Generate a batch from Overview.</div></Card>
+      ) : (
+        <ReviewTable slug={slug} rows={rows} />
+      )}
     </div>
-  );
-}
-
-type Row = { id: string; title: string | null; kind: string; status: string; primaryKeyword: string | null; _count: { comments: number } };
-
-function Section({ title, rows, slug, subtitle }: { title: string; rows: Row[]; slug: string; subtitle?: string }) {
-  if (rows.length === 0) return null;
-  return (
-    <section className="space-y-2">
-      <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{title}</h2>
-      {subtitle && <p className="text-muted-foreground -mt-1 text-xs">{subtitle}</p>}
-      {rows.map((p) => {
-        const kind = p.kind === "ARTICLE" ? "article" : "product";
-        return (
-          <Link key={p.id} href={`/r/${slug}/${kind}/${p.id}`}>
-            <Card className="hover:border-primary/40 flex-row items-center justify-between gap-4 p-4 transition-colors">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={p.status} />
-                  <span className="truncate font-semibold">{p.title ?? "Untitled"}</span>
-                </div>
-                <p className="text-muted-foreground mt-1 truncate text-sm">
-                  {p.kind === "PRODUCT_REWRITE" ? "product rewrite" : "article"}
-                  {p.primaryKeyword ? ` · ${p.primaryKeyword}` : ""}
-                  {p._count.comments > 0 ? ` · ${p._count.comments} comment(s)` : ""}
-                </p>
-              </div>
-              <span className="text-primary shrink-0 text-sm">Open →</span>
-            </Card>
-          </Link>
-        );
-      })}
-    </section>
   );
 }
