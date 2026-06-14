@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import PiecePreview, { type NewCommentInput, type PiecePreviewMeta } from "./PiecePreview";
 import BriefPanel from "./BriefPanel";
 import type { VersionContent } from "@/app/review/actions";
+import { rollback } from "@/app/review/actions";
 
 export interface ReviewShellVersion {
   version: number;
@@ -180,6 +181,21 @@ export default function ReviewShell(props: Props) {
     });
   }, [pieceId, props, router]);
 
+  // Restore an earlier version: rollback() snapshots the chosen version's content
+  // as a NEW latest version (non-destructive — every version is retained) and
+  // reopens the piece for review. Serves GOAL #8's one-click rollback.
+  const doRestore = useCallback(() => {
+    const target = selected;
+    const fd = new FormData();
+    fd.set("pieceId", pieceId);
+    fd.set("version", String(target));
+    startLoad(async () => {
+      await rollback(fd);
+      setSelected(latestVersion + 1); // rollback writes v(latest+1) = a copy of v{target}
+      router.refresh();
+    });
+  }, [pieceId, selected, latestVersion, router]);
+
   const frozen = poll === "rewriting";
   const approved = status === "APPROVED";
   const published = status === "PUBLISHED";
@@ -206,10 +222,21 @@ export default function ReviewShell(props: Props) {
         </label>
         {loadingVersion && <span className="text-muted-foreground text-xs">loading…</span>}
         {!onLatest && (
-          <Badge variant="warning">
-            viewing v{selected} (read-only) ·{" "}
-            <button type="button" className="underline" onClick={() => onSelectVersion(latestVersion)}>jump to latest</button>
-          </Badge>
+          <>
+            <Badge variant="warning">
+              viewing v{selected} (read-only) ·{" "}
+              <button type="button" className="underline" onClick={() => onSelectVersion(latestVersion)}>jump to latest</button>
+            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={doRestore}
+              disabled={frozen || loadingVersion}
+              title={`Restore v${selected} as a new version (the current draft is kept in history)`}
+            >
+              {loadingVersion ? "Restoring…" : `Restore v${selected}`}
+            </Button>
+          </>
         )}
 
         <span className="flex-1" />
