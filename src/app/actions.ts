@@ -76,9 +76,11 @@ export async function runBatch(formData: FormData) {
   const project = await prisma.project.findFirst({ where: { id: projectId, accountId: account.id } });
   if (!project) throw new Error("NOT_FOUND");
   const run = await prisma.run.create({ data: { projectId, status: "QUEUED" } });
-  await runCatalogRewrite({ projectId, runId: run.id, limit });
+  const r = await runCatalogRewrite({ projectId, runId: run.id, limit });
   revalidatePath(`/p/${await projectSlug(projectId)}`, "layout");
+  return { done: r.done, flagged: r.flagged };
 }
+export type RunBatchResult = { done: number; flagged: number };
 
 // Generate a batch of ARTICLES into the review queue. Topics are discovered
 // from the confirmed brand's seed topics (the engine finds the winnable keyword

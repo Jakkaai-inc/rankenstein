@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ExternalLink, Plug, BadgeCheck, Package, ClipboardList, CheckCircle2, Rocket } from "lucide-react";
 
-import { runBatch } from "@/app/actions";
+import OverviewActions from "@/components/dashboard/OverviewActions";
 import { prisma } from "@/lib/db";
 import { getAccount } from "@/lib/session";
 import { findProjectBySlug } from "@/lib/slug";
@@ -60,16 +60,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
       {fresh && <WelcomeDialog projectId={project.id} brandConfirmed={brandConfirmed} />}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Overview</h1>
-        {ready && (
-          <div className="flex items-center gap-2">
-            <form action={runBatch}>
-              <input type="hidden" name="projectId" value={project.id} />
-              <input type="hidden" name="limit" value="2" />
-              <Button type="submit"><Rocket className="size-4" />Generate a batch</Button>
-            </form>
-            <Button variant="outline" asChild><Link href={`${base}/review`}>Review queue ({pending})</Link></Button>
-          </div>
-        )}
+        {ready && <OverviewActions projectId={project.id} slug={slug} pending={pending} />}
       </div>
 
       {!ready && (
