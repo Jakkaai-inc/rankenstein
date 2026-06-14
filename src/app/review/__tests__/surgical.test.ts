@@ -95,6 +95,60 @@ describe("surgicalEditPiece", () => {
     expect(r.changed).toBe(1);
     expect(r.edits[0].before).toBe("soft fabric");
     expect(r.edits[0].after).toBe("plush fabric");
+    expect(r.edits[0].reason).toBe("applied");
+  });
+
+  it("reports each comment's fate: one applied, one no-op (the 2-comment case)", async () => {
+    // c1 changes; c2 is a refusal (editor echoes the span back).
+    const edit: SpanEditFn = async ({ quote }) =>
+      quote.includes("soft") ? quote.replace("soft", "plush") : quote;
+    const feedback: FeedbackSet = {
+      pieceId: "p1",
+      version: 1,
+      comments: [
+        { id: "c1", version: 1, anchor: spanAnchor("soft fabric"), body: "richer", modality: "text" },
+        { id: "c2", version: 1, anchor: spanAnchor("Ten shades, four formats."), body: "website says no ironing", modality: "text" },
+      ],
+    };
+    const r = await surgicalEditPiece(HTML, feedback, edit);
+    const byId = Object.fromEntries(r.edits.map((e) => [e.commentId, e]));
+    expect(byId.c1.reason).toBe("applied");
+    expect(byId.c1.changed).toBe(true);
+    expect(byId.c2.reason).toBe("no-change");
+    expect(byId.c2.changed).toBe(false);
+    expect(byId.c2.note).toMatch(/refus|not in the grounded source|replace with/i);
+    expect(r.changed).toBe(1); // only one actually moved
+  });
+
+  it("preserves a trailing structural tag when the span ends at the last text char", async () => {
+    // "Ten shades, four formats." is the final text; its slice swallows "</p>".
+    // A real rewrite must NOT drop that closing tag.
+    const edit: SpanEditFn = async () => "Nine shades, three formats.";
+    const feedback: FeedbackSet = {
+      pieceId: "p1",
+      version: 1,
+      comments: [{ id: "c1", version: 1, anchor: spanAnchor("Ten shades, four formats."), body: "update counts", modality: "text" }],
+    };
+    const r = await surgicalEditPiece(HTML, feedback, edit);
+    expect(r.changed).toBe(1);
+    expect(r.newHtml).toContain("Nine shades, three formats.</p>"); // tag kept
+    expect(r.newHtml).not.toContain("Ten shades");
+  });
+
+  it("HUMAN OVERRIDE: 'replace with: <text>' bypasses the AI and splices literally", async () => {
+    // The AI editor would no-op (echo), proving the override path does not call it.
+    const edit: SpanEditFn = async ({ targetHtml }) => targetHtml;
+    const feedback: FeedbackSet = {
+      pieceId: "p1",
+      version: 1,
+      comments: [{ id: "c1", version: 1, anchor: spanAnchor("soft fabric"), body: "replace with: do-not-iron fabric", modality: "text" }],
+    };
+    const r = await surgicalEditPiece(HTML, feedback, edit);
+    expect(r.changed).toBe(1);
+    expect(r.edits[0].reason).toBe("override");
+    expect(r.edits[0].after).toBe("do-not-iron fabric");
+    expect(r.newHtml).toContain("do-not-iron fabric");
+    expect(r.surgical).toBe(true); // still proven surgical
   });
 });
 

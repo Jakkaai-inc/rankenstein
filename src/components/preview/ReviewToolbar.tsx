@@ -158,11 +158,18 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
             <>{outcome.error ?? "Nothing applied."}</>
           )}
 
-          {/* Before -> after for each commented span, so "verified" is shown, not just asserted. */}
+          {/* Per-comment outcome: each comment's fate (applied/override/no-change/
+              skipped), so nothing silently no-ops. */}
           {outcome.edits && outcome.edits.length > 0 && (
             <div className="mt-3 space-y-2">
               {outcome.edits.map((e, i) => (
-                <div key={i} className="rounded border bg-white/70 p-2 text-xs">
+                <div key={i} className={`rounded border p-2 text-xs ${e.changed ? "bg-white/70" : "border-amber-200 bg-amber-50/50"}`}>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className={`rounded px-1.5 py-0.5 font-semibold ${e.changed ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                      {e.reason === "override" ? "applied (your exact text)" : e.reason === "no-change" ? "no change" : e.reason === "skipped" ? "skipped" : e.reason === "error" ? "failed" : "applied"}
+                    </span>
+                    {!e.changed && e.note && <span className="text-amber-800">{e.note}</span>}
+                  </div>
                   {e.changed ? (
                     <>
                       <div className="text-gray-500">before</div>
@@ -171,7 +178,7 @@ export default function ReviewToolbar({ pieceId, status, openComments, versions,
                       <div className="rounded bg-green-50 px-1.5 py-1 text-green-900">{e.after || "(removed)"}</div>
                     </>
                   ) : (
-                    <div className="text-gray-600">No change to: <span className="italic">{`"${e.before.length > 80 ? e.before.slice(0, 79) + "…" : e.before}"`}</span></div>
+                    <div className="text-gray-600 italic">{`"${e.before.length > 80 ? e.before.slice(0, 79) + "…" : e.before}"`}</div>
                   )}
                 </div>
               ))}

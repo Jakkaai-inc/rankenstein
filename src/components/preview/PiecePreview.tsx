@@ -235,6 +235,11 @@ export default function PiecePreview({ pieceId, version, html, meta, comments, a
               if (modality === "voice" && !listening) setModality("text");
             }}
           />
+          {draft.anchor.mode === "span" && (
+            <div className="rk-composer-hint">
+              Tip: start with <b>replace with:</b> to set exact text yourself (skips the AI and its grounding check).
+            </div>
+          )}
           <div className="rk-composer-actions">
             {voiceSupported &&
               (listening ? (
@@ -288,6 +293,7 @@ const PIECE_CSS = `
 .rk-composer{position:absolute;z-index:50;width:300px;background:#fff;border:1px solid #d9d4ca;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.16);padding:10px}
 .rk-composer-anchor{font-size:12px;color:var(--mut);font-style:italic;margin-bottom:6px;max-height:34px;overflow:hidden}
 .rk-composer-text{width:100%;min-height:62px;border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:14px/1.5 inherit;resize:vertical;box-sizing:border-box}
+.rk-composer-hint{font-size:11px;color:var(--mut);margin-top:5px;line-height:1.4}
 .rk-composer-actions{display:flex;align-items:center;gap:7px;margin-top:8px}
 .rk-spacer{flex:1}
 .rk-btn{border-radius:7px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent}

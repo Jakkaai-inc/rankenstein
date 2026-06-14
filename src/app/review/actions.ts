@@ -116,13 +116,19 @@ export interface ApplyReviewOutcome {
   applied: number;
   newVersion?: number;
   error?: string;
-  // Per-span before -> after so the UI shows what actually changed (or that
-  // nothing did) instead of a blind success banner.
-  edits?: { before: string; after: string; changed: boolean }[];
+  // Per-comment before -> after + WHY, so the UI reports each comment's fate
+  // (applied / override / no-change / skipped / error), not just an aggregate.
+  edits?: { commentId: string; before: string; after: string; changed: boolean; reason: string; note?: string }[];
 }
 
 export async function applyReview(formData: FormData): Promise<ApplyReviewOutcome> {
-  const pieceId = String(formData.get("pieceId"));
+  return runFeedbackRewrite(String(formData.get("pieceId")));
+}
+
+// Core rewrite, callable outside a form action (the feedback long-poll job uses
+// it). Rewrites the open commented spans of the latest version, snapshots a new
+// version, and returns the per-span before/after detail.
+export async function runFeedbackRewrite(pieceId: string): Promise<ApplyReviewOutcome> {
   const { piece } = await ownedPiece(pieceId);
   if (!piece.html) return { ok: false, surgical: false, untouchedSectionsChanged: [], applied: 0, error: "piece has no draft html" };
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -147,7 +153,7 @@ export async function applyReview(formData: FormData): Promise<ApplyReviewOutcom
 
   const feedback: FeedbackSet = { pieceId, version, comments };
   const result = await surgicalEditPiece(piece.html, feedback, spanEditor);
-  const editsView = result.edits.map((e) => ({ before: e.before, after: e.after, changed: e.changed }));
+  const editsView = result.edits.map((e) => ({ commentId: e.commentId, before: e.before, after: e.after, changed: e.changed, reason: e.reason, note: e.note }));
 
   // Refuse to write anything that touched an uncommented section.
   if (!result.surgical) {
@@ -220,4 +226,24 @@ export async function rollback(formData: FormData): Promise<void> {
     prisma.contentItem.update({ where: { id: pieceId }, data: { html: snap.html, status: "PENDING_REVIEW" } }),
   ]);
   revalidatePiece(piece);
+}
+
+// A single version's content, for the version selector. Old versions are
+// read-only in the UI; this just hands back the snapshot to render.
+export interface VersionContent {
+  version: number;
+  html: string;
+  note: string | null;
+  isLatest: boolean;
+}
+
+export async function getVersionContent(pieceId: string, version: number): Promise<VersionContent> {
+  await ownedPiece(pieceId);
+  const snap = await prisma.contentVersion.findUnique({
+    where: { contentItemId_version: { contentItemId: pieceId, version } },
+    select: { version: true, html: true, note: true },
+  });
+  if (!snap) throw new Error("VERSION_NOT_FOUND");
+  const latest = await latestVersion(pieceId);
+  return { version: snap.version, html: snap.html ?? "", note: snap.note, isLatest: snap.version === latest };
 }
