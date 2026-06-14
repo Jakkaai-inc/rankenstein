@@ -24,6 +24,7 @@ type DbBrand = {
   brandName: string;
   vendorName?: string | null;
   voice: string | null;
+  brandFacts?: string | null;
   voiceHardRules: unknown;
   seedTopics: string[];
   confirmed: boolean;
@@ -49,6 +50,7 @@ export function toEngineBrand(db: DbBrand, primaryDomain: string): BrandProfile 
     // make the research provider hallucinate generic keywords (earbuds, shoes).
     seedTerms: db.seedTopics ?? [],
     voiceNote: db.voice ?? "One honest peer among competitors. Specificity persuades; never hard-sell.",
+    brandFacts: db.brandFacts ?? undefined,
   };
 }
 

@@ -114,6 +114,10 @@ export type BrandProfile = {
   bannedWords: string[];
   seedTerms: string[];
   voiceNote: string;
+  /** Confirmed brand-level facts (markdown bullets: location, ownership, etc.).
+   *  A legitimate grounding source so true brand statements ("LA-rooted, female-led")
+   *  are not flagged as ungrounded by the otherwise product-facts-only verifier. */
+  brandFacts?: string;
 };
 
 // ── Engine-private: filter / select intermediates ───────────────────────────

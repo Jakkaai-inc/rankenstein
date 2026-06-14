@@ -96,6 +96,7 @@ export function groundProduct(input: GroundInput): GroundResult {
   facts.push({ field: 'title', value: product.title, source: 'product.title', trust: 'T1' });
   facts.push({ field: 'productType', value: product.productType, source: 'product.product_type', trust: 'T1' });
   facts.push({ field: 'brand', value: brand.vendorName, source: 'product.vendor', trust: 'T1' });
+  pushBrandFacts(facts, brand);
 
   // Options → color set + sold-as units (kept verbatim; abbreviations NOT expanded).
   let unitOptionName: string | null = null;
@@ -271,6 +272,20 @@ export function trustedFact(facts: FactRows, field: string): FactsRow | null {
   return facts.find((f) => f.field === field && (f.trust === 'T1' || f.trust === 'T2')) ?? null;
 }
 
+/** Add confirmed brand-level facts (markdown bullets) as grounding rows so true
+ *  brand statements (location, ownership) are not flagged as ungrounded. The
+ *  brand profile is human-confirmed, so these are T2 (merchant-stated). */
+function pushBrandFacts(facts: FactRows, brand: BrandProfile): void {
+  if (!brand.brandFacts) return;
+  const bullets = brand.brandFacts
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*[-*•]\s*/, "").replace(/\*\*/g, "").trim())
+    .filter((l) => l.length > 3);
+  for (const b of bullets.slice(0, 20)) {
+    facts.push({ field: 'brand.fact', value: b, source: 'brand profile (confirmed)', trust: 'T2' });
+  }
+}
+
 // ── Article-mode grounding ──────────────────────────────────────────────────
 //
 // Articles do not have a single source product. The internal FactsTable holds
@@ -315,6 +330,7 @@ export function groundArticle(input: ArticleGroundInput): ArticleGroundResult {
   const facts: FactRows = [];
   facts.push({ field: 'brand', value: brand.vendorName, source: 'brand profile', trust: 'T1' });
   facts.push({ field: 'domain', value: brand.primaryDomain, source: 'brand profile', trust: 'T1' });
+  pushBrandFacts(facts, brand);
 
   // internal facts about the brand's own products (assertable without citation).
   for (const p of input.relatedProducts ?? []) {
